@@ -27,6 +27,7 @@ class Cell:
     my_ants: int
     opp_ants: int
     routes: Dict[int, Tuple[int, List[int]]] = field(default_factory=dict)
+    grade_neigbors: int = 0
 
 
 def sigmoid(x):
@@ -215,20 +216,33 @@ def is_ending_of_game(cells: List[Cell]) -> bool:
     return game_turn > RATIO_TURNS or scored_points / t_points > RATIO_RESOURCES
 
 
+def set_grade_neigbors(cell: Cell) -> float:
+    grade = 0
+    for neighbor in cell.neighbors:
+        if neighbor == -1:
+            continue
+        if cells[neighbor].cell_type == CellType.EMPTY:
+            grade += 1
+        elif cells[neighbor].cell_type == CellType.CRYSTAL:
+            grade += 5 if is_ending_of_game(cells) else 3
+        elif cells[neighbor].cell_type == CellType.EGG:
+            grade += 5 if is_beggining_of_game(cells) else 3
+    return grade / 5
+
+
+def set_cells_grade_neigbors(cells: List[Cell]) -> List[Cell]:
+    for cell in cells:
+        cell.grade_neighbors = set_grade_neigbors(cell)
+    return cells
+
+
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     grade = src_cell.routes[dst_cell.index][0]
-    grade -= len(
-        [
-            cells[cell]
-            for cell in dst_cell.neighbors
-            if cells[cell].cell_type != CellType.EMPTY
-        ]
-    )
-    grade = max(1, grade)
+    grade -= dst_cell.grade_neigbors
     if dst_cell.opp_ants * grade > dst_cell.resources and dst_cell.my_ants == 0:
         grade += 15
     if dst_cell.cell_type == CellType.EGG:
-        grade /= 10 if game_turn < 10 else 3
+        grade -= 10 if is_beggining_of_game(cells) else 3
     return grade
 
 
@@ -312,14 +326,12 @@ def make_chain(
         [
             *[base for base in bases],
             *used_targets,
-            # *get_ants_beacons(cells, bases),
         ]
     )
     num_ants_available = get_my_ants_amount(cells) - used_ants
 
-    targets_number = 0
     chain_cells = [c for c in chain_cells if c.index not in used_targets]
-    while targets_number < chain_length:
+    for _ in range(chain_length):
         if not chain_cells:
             return actions
         options: List[Tuple[int, Cell, Cell]] = []
@@ -331,7 +343,6 @@ def make_chain(
         ants_needed_for_target = max(
             ANTS_NEEDED_FOR_TARGET, best_option[2].opp_ants + 1
         )
-        targets_number += 1
         num_ants_available -= (best_option[0] + 1) * ants_needed_for_target
         if num_ants_available < 0:
             break
@@ -362,6 +373,7 @@ def number_ants(cells: List[Cell]) -> int:
 
 
 if __name__ == "__main__":
+    t = time.time()
     cells = initilize_cells()
     my_bases, enemy_bases = initlize_bases()
     base: Cell = cells[my_bases[0]]
@@ -373,8 +385,11 @@ if __name__ == "__main__":
     # game loop
     while True:
         cells = update_cells(cells)
+        if game_turn != 1:
+            t = time.time()
         crystal_cells = get_crystal_cells(cells)
         eggs_cells = get_eggs_cells(cells)
+        set_cells_grade_neigbors(cells)
         if is_ending_of_game(cells):
             target_cells = [*crystal_cells]
         else:
@@ -390,6 +405,7 @@ if __name__ == "__main__":
             debug(
                 f"scored points: {left_points(cells)} total: {total_points(cells)} ratio: {left_points(cells)/total_points(cells)}"
             ),
+            # debug(f"turn: {game_turn} time: {time.time() - t} seconds"),
         ]
 
         do_actions(actions)

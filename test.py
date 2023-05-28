@@ -668,6 +668,5 @@ target_cells = [*crystal_cells, *eggs_cells]
 # print(t)
 # print(cells[41].routes[cells[44].index][0])
 cells = calculate_all_distances(cells)
-print(cells[0].routes[1][0])
 end_t = time()
 print("Duration: ", end_t - start_t)

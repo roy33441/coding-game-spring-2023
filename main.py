@@ -1,7 +1,7 @@
 from __future__ import annotations
 import math, time
 from dataclasses import dataclass, field
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Set
 from enum import Enum
 
 
@@ -318,8 +318,8 @@ def make_default_chains(
         used_ants += max(ANTS_NEEDED_FOR_TARGET, closest_resource.opp_ants + 1) * (
             distance + 1
         )
-        # if used_ants > max_ants and len(actions) > 0:
-        #     break 
+        if used_ants > max_ants and len(actions) > 0:
+            break 
         actions.append(
             make_lines(
                 cells[base], closest_resource, calculate_strength(closest_resource)
@@ -335,32 +335,53 @@ def make_default_chains(
     return actions, used_ants, new_beacons
 
 
+def opponent_attack_chain_streangth(cell: Cell, cells: List[Cell]) -> int:
+     streangths = [ 
+        cell.opp_ants,
+        max([cells[n].opp_ants for n in cell.neighbors]),
+     ]
+     return min(streangths)
+
 def make_chain(
     bases: List[int], chain_cells: List[Cell], cells: List[Cell], chain_length: int
 ) -> List[str]:
-    actions, used_ants, used_targets = make_default_chains(bases, chain_cells, cells)
-    beacons: List[int] = set(
+    actions, used_ants, used_targets = make_default_chains(bases, chain_cells, cells) if False else [], 0, []
+    beacons: Set[int] = set(
         [
             *[base for base in bases],
             *used_targets,
         ]
     )
     num_ants_available = get_my_ants_amount(cells) - used_ants
-
+    total_ants = get_my_ants_amount(cells)
     chain_cells = [c for c in chain_cells if c.index not in used_targets]
     for _ in range(chain_length):
         if not chain_cells:
             return actions
         options: List[Tuple[int, Cell, Cell]] = []
         for beacon in beacons:
-            closest_resource = get_best_cell(cells[beacon], chain_cells)
-            distance = cells[beacon].routes[closest_resource.index][0]
-            options.append((distance, cells[beacon], closest_resource))
+            best_resource = get_best_cell(cells[beacon], chain_cells)
+            distance = cells[beacon].routes[best_resource.index][0]
+            options.append((distance, cells[beacon], best_resource))
         best_option = min(options, key=lambda option: option[0])
+
+        chain_cells = [
+            chain_cell
+            for chain_cell in chain_cells
+            if chain_cell.index not in beacons and chain_cell.index != best_option[2].index
+        ]
+
         ants_needed_for_target = max(
-            ANTS_NEEDED_FOR_TARGET, best_option[2].opp_ants + 1
+            ANTS_NEEDED_FOR_TARGET, opponent_attack_chain_streangth(best_option[2], cells) + 1
         )
         num_ants_available -= (best_option[0] + 1) * ants_needed_for_target
+
+        new_beacons_state = beacons.copy()
+        new_beacons_state.update(best_option[1].routes[best_option[2].index][1])
+        ants_per_beacon = total_ants // len(new_beacons_state)
+        if ants_per_beacon < ants_needed_for_target:
+            continue
+
         if num_ants_available < 0:
             break
         actions.append(
@@ -369,11 +390,6 @@ def make_chain(
             )
         )
         beacons.update(best_option[1].routes[best_option[2].index][1])
-        chain_cells = [
-            c
-            for c in chain_cells
-            if c.index not in beacons and c.index != closest_resource.index
-        ]
     if len(actions) == 0:
         actions.extend(
             line(

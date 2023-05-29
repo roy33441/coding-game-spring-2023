@@ -142,7 +142,7 @@ def get_crystal_cells(cells: List[Cell]) -> List[Cell]:
         cell
         for cell in cells
         if cell.cell_type == CellType.CRYSTAL
-        and (cell.resources > cell.opp_ants or cell.my_ants >= cell.opp_ants)
+        and (cell.resources > cell.opp_ants or cell.my_ants >= opponent_attack_chain_streangth(cell, cells))
     ]
     return (
         crystals
@@ -156,7 +156,7 @@ def get_eggs_cells(cells: List[Cell]) -> List[Cell]:
         cell
         for cell in cells
         if cell.cell_type == CellType.EGG
-        and (cell.resources > cell.opp_ants or cell.my_ants >= cell.opp_ants)
+        and (cell.resources > cell.opp_ants or cell.my_ants >= opponent_attack_chain_streangth(cell, cells))
     ]
 
 
@@ -257,7 +257,7 @@ def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     grade += dst_cell.closest_base_distance * 0.3
     grade -= dst_cell.closest_enemy_base_distance * 0.15
     if dst_cell.opp_ants * grade > dst_cell.resources and dst_cell.my_ants == 0:
-        grade += 15
+        grade += 10
     if dst_cell.cell_type == CellType.EGG:
         grade -= 10 if is_beggining_of_game(cells) else 3
     return grade
@@ -304,35 +304,35 @@ def get_ants_beacons(cells: List[Cell], bases: List[int]) -> List[int]:
     return beacons
 
 
-def make_default_chains(
-    bases: List[int], chain_cells: List[Cell], cells: List[Cell]
-) -> Tuple[List[str], int, List[Cell]]:
-    actions = []
-    current_chain_cells = chain_cells.copy()
-    used_ants = 0
-    new_beacons: List[int] = []
-    max_ants = number_ants(cells)
-    for base in bases:
-        closest_resource = get_best_cell(cells[base], current_chain_cells)
-        distance = cells[base].routes[closest_resource.index][0]
-        used_ants += max(ANTS_NEEDED_FOR_TARGET, closest_resource.opp_ants + 1) * (
-            distance + 1
-        )
-        if used_ants > max_ants and len(actions) > 0:
-            break 
-        actions.append(
-            make_lines(
-                cells[base], closest_resource, calculate_strength(closest_resource)
-            )
-        )
-        actions.append(
-            debug(
-                f"used ants: {used_ants} going to: {closest_resource.index} from: {base} distance: {distance}"
-            )
-        )
-        new_beacons.extend(cells[base].routes[closest_resource.index][1])
+# def make_default_chains(
+#     bases: List[int], chain_cells: List[Cell], cells: List[Cell]
+# ) -> Tuple[List[str], int, List[Cell]]:
+#     actions = []
+#     current_chain_cells = chain_cells.copy()
+#     used_ants = 0
+#     new_beacons: List[int] = []
+#     max_ants = number_ants(cells)
+#     for base in bases:
+#         closest_resource = get_best_cell(cells[base], current_chain_cells)
+#         distance = cells[base].routes[closest_resource.index][0]
+#         used_ants += max(ANTS_NEEDED_FOR_TARGET, closest_resource.opp_ants + 1) * (
+#             distance + 1
+#         )
+#         if used_ants > max_ants and len(actions) > 0:
+#             break 
+#         actions.append(
+#             make_lines(
+#                 cells[base], closest_resource, calculate_strength(closest_resource)
+#             )
+#         )
+#         actions.append(
+#             debug(
+#                 f"used ants: {used_ants} going to: {closest_resource.index} from: {base} distance: {distance}"
+#             )
+#         )
+#         new_beacons.extend(cells[base].routes[closest_resource.index][1])
 
-    return actions, used_ants, new_beacons
+#     return actions, used_ants, new_beacons
 
 
 def opponent_attack_chain_streangth(cell: Cell, cells: List[Cell]) -> int:

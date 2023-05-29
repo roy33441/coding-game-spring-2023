@@ -26,8 +26,12 @@ class Cell:
     neighbors: list[int]
     my_ants: int
     opp_ants: int
+    base_distance: int = 0
     routes: Dict[int, Tuple[int, List[int]]] = field(default_factory=dict)
     grade_neigbors: int = 0
+    closest_base_distance: int = 0
+    closest_enemy_base_distance: int = 0
+    closest_ant_distance: int = 0
 
 
 def sigmoid(x):
@@ -51,6 +55,7 @@ def make_lines(src_cell: Cell, dst_cell: Cell, strength: int = 1) -> str:
         *[beacon(cell, strength) for cell in src_cell.routes[dst_cell.index][1]],
     ]
     return ";".join(s)
+
 
 
 def initilize_cells() -> List[Cell]:
@@ -101,7 +106,7 @@ def initlize_bases() -> Tuple[List[int], List[int]]:
     return my_bases, opp_bases
 
 
-def update_cells(cells: List[Cell]) -> List[Cell]:
+def update_cells(cells: List[Cell]) -> List[Cell]:    
     for i in range(len(cells)):
         inputs = [int(j) for j in input().split()]
         resources = inputs[0]  # the current amount of eggs/crystals on this cell
@@ -114,6 +119,14 @@ def update_cells(cells: List[Cell]) -> List[Cell]:
         if cells[i].resources == 0:
             cells[i].cell_type = CellType.EMPTY
 
+    return cells
+
+def set_cell_closest_ant_distance(cells: List[Cell]) -> List[Cell]:
+    my_ants_cells = get_my_ant_cells(cells)
+    for cell in cells:
+        closest_ant = get_closest_cell(cell, my_ants_cells)
+        cell.closest_ant_distance = cell.routes[closest_ant.index][0]
+    
     return cells
 
 
@@ -178,6 +191,7 @@ def calculate_all_distances(cells: List[Cell]) -> List[Cell]:
     return cells
 
 
+
 def get_route(
     start_cell: Cell, end_cell: Cell, last_cell_in_route: List[List[Cell]]
 ) -> List[Cell]:
@@ -239,6 +253,9 @@ def set_cells_grade_neigbors(cells: List[Cell]) -> List[Cell]:
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     grade = src_cell.routes[dst_cell.index][0]
     grade -= dst_cell.grade_neigbors
+    grade += dst_cell.closest_ant_distance * 0.8
+    grade += dst_cell.closest_base_distance * 0.3
+    grade -= dst_cell.closest_enemy_base_distance * 0.15
     if dst_cell.opp_ants * grade > dst_cell.resources and dst_cell.my_ants == 0:
         grade += 15
     if dst_cell.cell_type == CellType.EGG:
@@ -301,8 +318,8 @@ def make_default_chains(
         used_ants += max(ANTS_NEEDED_FOR_TARGET, closest_resource.opp_ants + 1) * (
             distance + 1
         )
-        if used_ants > max_ants and len(actions) > 0:
-            break
+        # if used_ants > max_ants and len(actions) > 0:
+        #     break 
         actions.append(
             make_lines(
                 cells[base], closest_resource, calculate_strength(closest_resource)
@@ -371,6 +388,21 @@ def make_chain(
 def number_ants(cells: List[Cell]) -> int:
     return sum([cell.my_ants for cell in cells])
 
+def update_cells_closest_base_distance(cells: List[Cell], bases: List[Cell]) -> List[Cell]:
+    for cell in cells:
+        closest_base = get_closest_cell(cell, [cells[b] for b in bases])
+        cell.closest_base_distance = cell.routes[closest_base.index][0]
+    return cells
+
+def update_cells_closest_enemy_base_distance(cells: List[Cell], enemy_bases: List[Cell]) -> List[Cell]:
+    for cell in cells:
+        closest_base = get_closest_cell(cell, [cells[b] for b in enemy_bases])
+        cell.closest_enemy_base_distance = cell.routes[closest_base.index][0]
+    return cells
+
+def cell_closest_ant_distance(cell: Cell, my_ants: List[Cell]) -> int:
+    closest_ant = get_closest_cell(cell, my_ants)
+    return cell.routes[closest_ant.index][0]
 
 if __name__ == "__main__":
     t = time.time()
@@ -381,6 +413,8 @@ if __name__ == "__main__":
     eggs_cells = get_eggs_cells(cells)
     target_cells = [*crystal_cells, *eggs_cells]
     cells = calculate_all_distances(cells)
+    cells = update_cells_closest_base_distance(cells, my_bases)
+    cells = update_cells_closest_enemy_base_distance(cells, enemy_bases)
 
     # game loop
     while True:
@@ -390,6 +424,7 @@ if __name__ == "__main__":
         crystal_cells = get_crystal_cells(cells)
         eggs_cells = get_eggs_cells(cells)
         set_cells_grade_neigbors(cells)
+        set_cell_closest_ant_distance(cells)
         if is_ending_of_game(cells):
             target_cells = [*crystal_cells]
         else:

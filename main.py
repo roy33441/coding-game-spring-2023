@@ -434,6 +434,7 @@ if __name__ == "__main__":
 
     # game loop
     while True:
+        my_score, enemy_score = [int(i) for i in input().split()]
         cells = update_cells(cells)
         if game_turn != 1:
             t = time.time()

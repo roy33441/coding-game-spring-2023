@@ -336,8 +336,8 @@ def make_chain(
             *used_targets,
         ]
     )
-    my_ant_ids = [ant.index for ant in my_chain_ants]
-    srcs = beacons | set(my_ant_ids)
+    my_ant_indexes = [ant.index for ant in my_chain_ants]
+    srcs = beacons | set(my_ant_indexes)
     num_ants_available = get_my_ants_amount(cells) - used_ants
     total_ants = get_my_ants_amount(cells)
     chain_cells = [c for c in chain_cells if c.index not in used_targets]
@@ -390,7 +390,7 @@ def make_chain(
         actions.append(make_lines(src, target, calculate_strength(target)))
         beacons.update(route_to_beacon)
         beacons.update(route_to_target)
-        srcs = beacons | set(my_ant_ids)
+        srcs = beacons | set(my_ant_indexes)
 
     if len(actions) == 0:
         actions.extend(
@@ -430,16 +430,16 @@ def cell_closest_ant_distance(cell: Cell, my_ants: List[Cell]) -> int:
     return cell.routes[closest_ant.index][0]
 
 
-def has_my_ants_chain_to_base(cell: Cell, base: Cell, my_ant_ids: List[int]) -> bool:
-    return all(cell in my_ant_ids for cell in cell.routes[base.int][1])
+def has_my_ants_chain_to_base(cell: Cell, base: Cell, my_ant_indexes: List[int]) -> bool:
+    return all(cell in my_ant_indexes for cell in cell.routes[base.int][1])
 
 
 def get_my_chain_ants(cells: List[Cell], my_bases: List[Cell]) -> List[Cell]:
     chain_ants = []
     my_ants = get_my_ant_cells(cells)
-    my_ant_ids = [ant.id for ant in my_ants]
+    my_ant_indexes = [ant.index for ant in my_ants]
     for ant in my_ants:
-        if any(has_my_ants_chain_to_base(ant, base, my_ant_ids) for base in my_bases):
+        if any(has_my_ants_chain_to_base(ant, base, my_ant_indexes) for base in my_bases):
             chain_ants.append(ant)
     return chain_ants
 

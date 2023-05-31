@@ -254,10 +254,10 @@ def set_grade_neigbors(cell: Cell) -> float:
         if cells[neighbor].cell_type == CellType.EMPTY:
             grade += 1
         elif cells[neighbor].cell_type == CellType.CRYSTAL:
-            grade += 5 if is_ending_of_game(cells) else 3
+            grade += 10 if is_ending_of_game(cells) else 3
         elif cells[neighbor].cell_type == CellType.EGG:
-            grade += 5 if is_beggining_of_game(cells) else 3
-    return grade / 5
+            grade += 10 if is_beggining_of_game(cells) else 3
+    return grade / 15
 
 
 def set_cells_grade_neigbors(cells: List[Cell]) -> List[Cell]:
@@ -268,7 +268,7 @@ def set_cells_grade_neigbors(cells: List[Cell]) -> List[Cell]:
 
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     grade: float = src_cell.routes[dst_cell.index][0]
-    grade -= dst_cell.grade_neigbors
+    # grade -= dst_cell.grade_neigbors * 0.5
     grade += dst_cell.closest_ant_distance * 0.8
     grade += dst_cell.closest_base_distance * 0.3
     grade -= dst_cell.closest_enemy_base_distance * 0.15
@@ -365,7 +365,8 @@ def make_chain(
 
     beacons: Set[int] = set(bases)
     my_ant_indexes = [ant.index for ant in my_chain_ants]
-    srcs = beacons | set(my_ant_indexes)
+    # srcs = beacons | set(my_ant_indexes)
+    srcs = beacons
     num_ants_available = get_my_ants_amount(cells)
     total_ants = get_my_ants_amount(cells)
     for _ in range(chain_length):
@@ -415,6 +416,11 @@ def make_chain(
             actions.append(make_lines(src, closest_beacon, calculate_strength(target)))
 
         actions.append(make_lines(src, target, calculate_strength(target)))
+        actions.append(
+            debug(
+                f"Target from {src.index} To: {target.index} Total grade: {grade_cell(src, target)} D: {src.routes[target.index][0]} B: {target.bonus_grade} CB: {target.closest_base_distance} CEB: {target.closest_enemy_base_distance} GN: {target.grade_neigbors}"
+            )
+        )
         beacons.update(route_to_beacon)
         beacons.update(route_to_target)
         srcs = beacons | set(my_ant_indexes)

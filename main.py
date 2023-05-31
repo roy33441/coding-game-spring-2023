@@ -1,14 +1,14 @@
 from __future__ import annotations
 import math, time
 from dataclasses import dataclass, field
-from typing import List, Tuple, Any, Dict, Set
+from typing import List, Optional, Tuple, Any, Dict, Set, Union, cast
 from enum import Enum
 
 
 global game_turn, MAX_TURNS, MAX_DEEP
 MAX_TURNS = 100
 game_turn = 1
-ANTS_NEEDED_FOR_TARGET = 2
+ANTS_NEEDED_FOR_TARGET = 3
 
 
 class CellType(Enum):
@@ -28,25 +28,28 @@ class Cell:
     opp_ants: int
     base_distance: int = 0
     routes: Dict[int, Tuple[int, List[int]]] = field(default_factory=dict)
-    grade_neigbors: int = 0
+    grade_neigbors: float = 0
     closest_base_distance: int = 0
     closest_enemy_base_distance: int = 0
     closest_ant_distance: int = 0
+    bonus_grade: float = 0
+
+    def __hash__(self) -> int:
+        return self.index
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Cell) and self.index == other.index
 
 
-def sigmoid(x):
-    return 1 / (1 + math.exp(-x))
-
-
-def debug(message: Any):
+def debug(message: Any) -> str:
     return "MESSAGE " + str(message)
 
 
-def beacon(cell_index: int, strength: int = 1):
+def beacon(cell_index: int, strength: int = 1) -> str:
     return f"BEACON {cell_index} {strength}"
 
 
-def line(src_cell: int, dst_cell: int, strength: int = 1):
+def line(src_cell: int, dst_cell: int, strength: int = 1) -> str:
     return f"LINE {src_cell} {dst_cell} {strength}"
 
 
@@ -167,7 +170,9 @@ def get_eggs_cells(cells: List[Cell]) -> List[Cell]:
 
 
 def calculate_all_distances(cells: List[Cell]) -> List[Cell]:
-    last_cell_in_route = [[None for cell in cells] for cell in cells]
+    last_cell_in_route: List[List[Optional[Cell]]] = [
+        [None for cell in cells] for cell in cells
+    ]
     distances = [[len(cells) for cell in cells] for cell in cells]
     for cell in cells:
         # distance, cur_cell, last_cell
@@ -191,18 +196,24 @@ def calculate_all_distances(cells: List[Cell]) -> List[Cell]:
             # if other.index != cell.index:
             cell.routes[other.index] = (
                 distances[cell.index][other.index],
-                get_route(cell, other, last_cell_in_route),
+                get_route(cell, other, cast(List[List[Cell]], last_cell_in_route)),
             )
 
     return cells
 
 
+def remove_cells_by_indexes(
+    origin_cells: List[Cell], remove_indexes: Union[List[int], Set[int]]
+) -> List[Cell]:
+    return [cell for cell in origin_cells if cell.index not in remove_indexes]
+
+
 def get_route(
     start_cell: Cell, end_cell: Cell, last_cell_in_route: List[List[Cell]]
-) -> List[Cell]:
-    route: List[Cell] = [end_cell.index]
+) -> List[int]:
+    route: List[int] = [end_cell.index]
     while end_cell != start_cell:
-        end_cell: Cell = last_cell_in_route[start_cell.index][end_cell.index]
+        end_cell = last_cell_in_route[start_cell.index][end_cell.index]
         route.append(end_cell.index)
     return route[::-1]
 
@@ -251,31 +262,43 @@ def set_grade_neigbors(cell: Cell) -> float:
 
 def set_cells_grade_neigbors(cells: List[Cell]) -> List[Cell]:
     for cell in cells:
-        cell.grade_neighbors = set_grade_neigbors(cell)
+        cell.grade_neigbors = set_grade_neigbors(cell)
     return cells
 
 
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
-    grade = src_cell.routes[dst_cell.index][0]
+    grade: float = src_cell.routes[dst_cell.index][0]
     grade -= dst_cell.grade_neigbors
     grade += dst_cell.closest_ant_distance * 0.8
     grade += dst_cell.closest_base_distance * 0.3
     grade -= dst_cell.closest_enemy_base_distance * 0.15
+    grade += src_cell.bonus_grade
     if dst_cell.opp_ants * grade > dst_cell.resources and dst_cell.my_ants == 0:
         grade += 10
-    if dst_cell.cell_type == CellType.EGG:
-        grade -= 10 if is_beggining_of_game(cells) else 3
     return grade
 
 
-def get_best_cell(src_cell, target_cells: List[Cell]) -> Any:
+def get_grade_bonus(cell: Cell, cells: List[Cell]) -> float:
+    grade_bonus: float = 0
+    if cell.cell_type == CellType.EGG:
+        grade_bonus -= 10 if is_beggining_of_game(cells) else 3
+    return grade_bonus
+
+
+def set_cells_grade_bonus(cells: List[Cell]) -> List[Cell]:
+    for cell in cells:
+        cell.bonus_grade = get_grade_bonus(cell, cells)
+    return cells
+
+
+def get_best_cell(src_cell: Cell, target_cells: List[Cell]) -> Any:
     return min(
         target_cells,
         key=lambda cell: grade_cell(src_cell, cell),
     )
 
 
-def get_closest_cell(src_cell, target_cells: List[Cell]) -> Cell:
+def get_closest_cell(src_cell: Cell, target_cells: List[Cell]) -> Cell:
     return min(
         target_cells,
         key=lambda dst_cell: src_cell.routes[dst_cell.index][0],
@@ -298,8 +321,8 @@ def calculate_strength(cell: Cell) -> int:
     return 1
 
 
-def get_ants_beacons(cells: List[Cell], bases: List[int]) -> List[int]:
-    beacons: List[int] = set()
+def get_ants_beacons(cells: List[Cell], bases: List[int]) -> Set[int]:
+    beacons: Set[int] = set()
     for cell in cells:
         for base in bases:
             if cell.index != base and all(
@@ -307,6 +330,19 @@ def get_ants_beacons(cells: List[Cell], bases: List[int]) -> List[int]:
             ):
                 beacons.update(cell.routes[base][1])
     return beacons
+
+
+def get_best_option(
+    src_cells: Set[int], cells: List[Cell], targets: List[Cell]
+) -> Tuple[int, Cell, Cell]:
+    options: List[Tuple[int, Cell, Cell]] = []
+    for src_cell in src_cells:
+        best_resource = get_best_cell(cells[src_cell], targets)
+        distance = cells[src_cell].routes[best_resource.index][0]
+        options.append((distance, cells[src_cell], best_resource))
+
+    # best_option = min(options, key=lambda option: option[0])
+    return min(options, key=lambda option: grade_cell(option[1], option[2]))
 
 
 def opponent_attack_chain_streangth(cell: Cell, cells: List[Cell]) -> int:
@@ -325,61 +361,52 @@ def make_chain(
     my_chain_ants: List[Cell],
 ) -> List[str]:
     ## TODO: multiply beacons amount in largest assumption.
-    actions, used_ants, used_targets = (
-        make_default_chains(bases, chain_cells, cells) if False else [],
-        0,
-        [],
-    )
-    beacons: Set[int] = set(
-        [
-            *[base for base in bases],
-            *used_targets,
-        ]
-    )
+    actions: List[str] = []
+
+    beacons: Set[int] = set(bases)
     my_ant_indexes = [ant.index for ant in my_chain_ants]
     srcs = beacons | set(my_ant_indexes)
-    num_ants_available = get_my_ants_amount(cells) - used_ants
+    num_ants_available = get_my_ants_amount(cells)
     total_ants = get_my_ants_amount(cells)
-    chain_cells = [c for c in chain_cells if c.index not in used_targets]
     for _ in range(chain_length):
         if not chain_cells:
             return actions
-        options: List[Tuple[int, Cell, Cell]] = []
-        for src in srcs:
-            best_resource = get_best_cell(cells[src], chain_cells)
-            distance = cells[src].routes[best_resource.index][0]
-            options.append((distance, cells[src], best_resource))
 
-        # best_option = min(options, key=lambda option: option[0])
-        best_option = min(options, key=lambda option: grade_cell(option[1], option[2]))
-        distance, src, target = best_option
+        distance, src, target = get_best_option(srcs, cells, chain_cells)
 
-        ants_needed_for_target = max(
+        ants_strength_for_target = max(
             ANTS_NEEDED_FOR_TARGET, opponent_attack_chain_streangth(target, cells) + 1
         )
 
-        if src in beacons:
+        if src.index in beacons:
             closest_beacon = src
         else:
-            # TODO: Route instead of source
-            closest_beacon = get_closest_cell(src, beacons)
+            closest_beacon = get_closest_cell(
+                src, [cells[beacon] for beacon in beacons]
+            )
+            distance += target.routes[closest_beacon.index][0]
+
+        ants_needed_for_target = (distance + 1) * ants_strength_for_target
 
         chain_cells = [
             chain_cell
             for chain_cell in chain_cells
             if chain_cell.index not in beacons and chain_cell.index != target.index
         ]
+        chain_cells = remove_cells_by_indexes(chain_cells, [*beacons, target.index])
 
         route_to_target = src.routes[target.index][1]
-        route_to_beacon = src.routes[closest_beacon] if closest_beacon != src else []
+        route_to_beacon = (
+            src.routes[closest_beacon.index][1] if closest_beacon != src else []
+        )
         new_beacons_state = beacons.copy()
         new_beacons_state.update(route_to_target)
         new_beacons_state.update(route_to_beacon)
         ants_per_beacon = total_ants // len(new_beacons_state)
-        if ants_per_beacon < ants_needed_for_target:
+        if ants_per_beacon < ants_strength_for_target:
             continue
 
-        num_ants_available -= (distance + 1) * ants_needed_for_target
+        num_ants_available -= ants_needed_for_target
 
         if num_ants_available < 0:
             break
@@ -408,7 +435,7 @@ def number_ants(cells: List[Cell]) -> int:
 
 
 def update_cells_closest_base_distance(
-    cells: List[Cell], bases: List[Cell]
+    cells: List[Cell], bases: List[int]
 ) -> List[Cell]:
     for cell in cells:
         closest_base = get_closest_cell(cell, [cells[b] for b in bases])
@@ -417,7 +444,7 @@ def update_cells_closest_base_distance(
 
 
 def update_cells_closest_enemy_base_distance(
-    cells: List[Cell], enemy_bases: List[Cell]
+    cells: List[Cell], enemy_bases: List[int]
 ) -> List[Cell]:
     for cell in cells:
         closest_base = get_closest_cell(cell, [cells[b] for b in enemy_bases])
@@ -430,16 +457,18 @@ def cell_closest_ant_distance(cell: Cell, my_ants: List[Cell]) -> int:
     return cell.routes[closest_ant.index][0]
 
 
-def has_my_ants_chain_to_base(cell: Cell, base: Cell, my_ant_indexes: List[int]) -> bool:
-    return all(cell in my_ant_indexes for cell in cell.routes[base.int][1])
+def has_my_ants_chain_to_base(cell: Cell, base: int, my_ant_indexes: List[int]) -> bool:
+    return all(cell in my_ant_indexes for cell in cell.routes[base][1])
 
 
-def get_my_chain_ants(cells: List[Cell], my_bases: List[Cell]) -> List[Cell]:
+def get_my_chain_ants(cells: List[Cell], my_bases: List[int]) -> List[Cell]:
     chain_ants = []
     my_ants = get_my_ant_cells(cells)
     my_ant_indexes = [ant.index for ant in my_ants]
     for ant in my_ants:
-        if any(has_my_ants_chain_to_base(ant, base, my_ant_indexes) for base in my_bases):
+        if any(
+            has_my_ants_chain_to_base(ant, base, my_ant_indexes) for base in my_bases
+        ):
             chain_ants.append(ant)
     return chain_ants
 
@@ -455,7 +484,6 @@ if __name__ == "__main__":
     cells = calculate_all_distances(cells)
     cells = update_cells_closest_base_distance(cells, my_bases)
     cells = update_cells_closest_enemy_base_distance(cells, enemy_bases)
-    my_chain_ants = get_my_chain_ants(cells, my_bases)
 
     # game loop
     while True:
@@ -463,10 +491,12 @@ if __name__ == "__main__":
         cells = update_cells(cells)
         if game_turn != 1:
             t = time.time()
+        my_chain_ants = get_my_chain_ants(cells, my_bases)
         crystal_cells = get_crystal_cells(cells)
         eggs_cells = get_eggs_cells(cells)
         set_cells_grade_neigbors(cells)
         set_cell_closest_ant_distance(cells)
+        set_cells_grade_bonus(cells)
         if is_ending_of_game(cells):
             target_cells = [*crystal_cells]
         else:

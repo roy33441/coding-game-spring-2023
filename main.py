@@ -48,17 +48,67 @@ def debug(message: Any) -> str:
 def beacon(cell_index: int, strength: int = 1) -> str:
     return f"BEACON {cell_index} {strength}"
 
+def beacon_action(cell_index: int, strength: int = 1) -> str:
+    return f"BEACON {cell_index} {strength}"
+
 
 def line(src_cell: int, dst_cell: int, strength: int = 1) -> str:
     return f"LINE {src_cell} {dst_cell} {strength}"
 
 
-def make_lines(src_cell: Cell, dst_cell: Cell, strength: int = 1) -> str:
+def make_lines2(src_cell: Cell, dst_cell: Cell, strength: int = 1) -> str:
     s = [
         *[beacon(cell, strength) for cell in src_cell.routes[dst_cell.index][1]],
     ]
     return ";".join(s)
 
+
+def update_streangth_with_leftover(beacons_streangth: Dict[int, int], beacons: Set[int], leftover: int, streangth: int):
+    if leftover != 0:
+        relevant_for_leftover = [beacon for beacon in beacons if cells[beacon].my_ants <= streangth][:leftover]
+        for i in range(len(relevant_for_leftover) - 1):
+            beacons_streangth[relevant_for_leftover[i]] += 1
+    
+        beacons_streangth[relevant_for_leftover[-1]] += leftover - len(relevant_for_leftover) + 1
+
+
+def make_lines(bases_beacons: Dict[int, Set[int]], cells: List[Cell]) -> List[str]:
+    beacons_streangth: Dict[int, int] = {}
+    actions = []
+    actions.append(debug(f"Bases beacons are {bases_beacons}"))
+    ants_without_beacons = set([])
+    bases_streangth: Dict[int, int] = {}
+    for base, base_beacons in bases_beacons.items():
+        if len(base_beacons) == 1:
+            ants_without_beacons.add(base)
+            continue
+        beacons_amount = len(base_beacons)
+        ants_amount = sum([cells[b].my_ants for b in base_beacons])
+        streangth = ants_amount // beacons_amount
+        bases_streangth[base] = streangth
+        leftover = ants_amount - streangth * beacons_amount
+        actions.append(debug(f"{base=} {beacons_amount=} {ants_amount=} {streangth=} {leftover=}"))
+        for beacon in base_beacons:
+            beacons_streangth[beacon] = beacons_streangth.get(beacon, 0) + streangth
+        
+        update_streangth_with_leftover(beacons_streangth, base_beacons, leftover, streangth)
+
+    actions.append(debug(f"Ants without beacons1 {ants_without_beacons}"))
+    ants_without_beacons.update(ant.index for ant in get_my_ant_cells(cells) if not ant.index in beacons_streangth)
+    used_beacons: List[Cell] = list(cells[b] for b in beacons_streangth.keys())
+    actions.append(debug(f"Ants without beacons2 {ants_without_beacons}"))
+    for ant in ants_without_beacons:
+        leftover = cells[ant].my_ants
+        closest_beacon = get_closest_cell(cells[ant], used_beacons)
+        closest_beacon_base = [base for base in bases_beacons if closest_beacon.index in bases_beacons[base]][0]
+        beacons = bases_beacons[closest_beacon_base]
+        streangth = bases_streangth[closest_beacon_base]
+        actions.append(debug(f"Here123 {leftover=} {streangth=} {ant=}"))
+        update_streangth_with_leftover(beacons_streangth, beacons, leftover, streangth)
+            
+
+    actions.extend([beacon_action(beacon, streangth) for beacon, streangth in beacons_streangth.items()])
+    return actions
 
 def initilize_cells() -> List[Cell]:
     cells: List[Cell] = []
@@ -306,7 +356,7 @@ def get_closest_cell(src_cell: Cell, target_cells: List[Cell]) -> Cell:
 
 
 def get_my_ant_cells(all_cells: List[Cell]) -> List[Cell]:
-    return [cell for cell in all_cells if cell.my_ants >= 0]
+    return [cell for cell in all_cells if cell.my_ants > 0]
 
 
 def get_my_ants_amount(cells: List[Cell]) -> int:
@@ -362,18 +412,22 @@ def make_chain(
 ) -> List[str]:
     ## TODO: multiply beacons amount in largest assumption.
     actions: List[str] = []
-
     beacons: Set[int] = set(bases)
+    bases_beacons: Dict[int, Set[int]] = {base: set([base]) for base in bases}
     my_ant_indexes = [ant.index for ant in my_chain_ants]
-    # srcs = beacons | set(my_ant_indexes)
-    srcs = beacons
+    #srcs = beacons | set(my_ant_indexes)
+    #srcs = beacons
     num_ants_available = get_my_ants_amount(cells)
     total_ants = get_my_ants_amount(cells)
+    unused_bases: Set[int] = set(bases)
+
     for _ in range(chain_length):
         if not chain_cells:
             return actions
 
-        distance, src, target = get_best_option(srcs, cells, chain_cells)
+        distance, src, target = get_best_option(unused_bases if unused_bases else beacons, cells, chain_cells)
+        if src.index in unused_bases:
+            unused_bases.remove(src.index)
 
         ants_strength_for_target = max(
             ANTS_NEEDED_FOR_TARGET, opponent_attack_chain_streangth(target, cells) + 1
@@ -382,6 +436,7 @@ def make_chain(
         if src.index in beacons:
             closest_beacon = src
         else:
+            raise AssertionError
             closest_beacon = get_closest_cell(
                 src, [cells[beacon] for beacon in beacons]
             )
@@ -397,12 +452,12 @@ def make_chain(
         chain_cells = remove_cells_by_indexes(chain_cells, [*beacons, target.index])
 
         route_to_target = src.routes[target.index][1]
-        route_to_beacon = (
-            src.routes[closest_beacon.index][1] if closest_beacon != src else []
-        )
+        #route_to_beacon = (
+        #    src.routes[closest_beacon.index][1] if closest_beacon != src else []
+        #)
+
         new_beacons_state = beacons.copy()
         new_beacons_state.update(route_to_target)
-        new_beacons_state.update(route_to_beacon)
         ants_per_beacon = total_ants // len(new_beacons_state)
         if ants_per_beacon < ants_strength_for_target:
             continue
@@ -412,18 +467,31 @@ def make_chain(
         if num_ants_available < 0:
             break
 
-        if closest_beacon != src:
-            actions.append(make_lines(src, closest_beacon, calculate_strength(target)))
+        # if closest_beacon != src:
+        #     actions.append(make_lines(src, closest_beacon, calculate_strength(target)))
 
-        actions.append(make_lines(src, target, calculate_strength(target)))
-        actions.append(
-            debug(
-                f"Target from {src.index} To: {target.index} Total grade: {grade_cell(src, target)} D: {src.routes[target.index][0]} B: {target.bonus_grade} CB: {target.closest_base_distance} CEB: {target.closest_enemy_base_distance} GN: {target.grade_neigbors}"
-            )
-        )
-        beacons.update(route_to_beacon)
+
+        current_bases = [b for b in bases if src.index in bases_beacons[b]]
+        if not current_bases:
+            actions.append(debug(f"Src {src}. bases {bases}. bases_beacons : {bases_beacons}"))
+        assert len(current_bases) > 0
+        actions.append(debug(f"Current bases are {current_bases}"))
+        for b in current_bases:
+            bases_beacons[b].update(route_to_target)
+
+        actions.append(debug(f"Bases beacons are {bases_beacons}"))
+        
+        #actions.append(make_lines(src, target, calculate_strength(target)))
+        
+        # actions.append(
+        #     debug(
+        #         f"Target from {src.index} To: {target.index} Total grade: {grade_cell(src, target)} D: {src.routes[target.index][0]} B: {target.bonus_grade} CB: {target.closest_base_distance} CEB: {target.closest_enemy_base_distance} GN: {target.grade_neigbors}"
+        #     )
+        # )
         beacons.update(route_to_target)
-        srcs = beacons | set(my_ant_indexes)
+        
+        #srcs = beacons | set(my_ant_indexes)
+    actions.extend(make_lines(bases_beacons, cells))
 
     if len(actions) == 0:
         actions.extend(

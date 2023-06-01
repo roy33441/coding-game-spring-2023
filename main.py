@@ -285,7 +285,7 @@ def set_cells_grade_neigbors(cells: List[Cell]) -> List[Cell]:
 
 
 def grade_beacon(dst_cell: Cell) -> float:
-    grade: float = dst_cell.closest_ant_distance * 0.5
+    grade: float = dst_cell.closest_ant_distance * 0.2
     if dst_cell.opp_ants > dst_cell.my_ants:
         grade += 0.5
     if dst_cell.cell_type == CellType.EGG:
@@ -298,7 +298,7 @@ def grade_beacon(dst_cell: Cell) -> float:
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     grade: float = src_cell.routes[dst_cell.index][0]
     # grade -= dst_cell.grade_neigbors
-    grade += dst_cell.closest_ant_distance * 0.8
+    grade += dst_cell.closest_ant_distance * 0.3
     grade += dst_cell.closest_base_distance * 0.3
     grade -= dst_cell.closest_enemy_base_distance * 0.15
     if dst_cell.opp_ants * grade > dst_cell.resources and dst_cell.my_ants == 0:
@@ -323,7 +323,7 @@ def get_closest_cell(src_cell, target_cells: List[Cell]) -> Cell:
 
 
 def get_my_ant_cells(all_cells: List[Cell]) -> List[Cell]:
-    return [cell for cell in all_cells if cell.my_ants >= 0]
+    return [cell for cell in all_cells if cell.my_ants > 0]
 
 
 def get_my_ants_amount(cells: List[Cell]) -> int:

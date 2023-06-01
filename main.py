@@ -28,7 +28,7 @@ class Cell:
     opp_ants: int
     base_distance: int = 0
     routes: Dict[int, Tuple[int, List[int]]] = field(default_factory=dict)
-    grade_neigbors: int = 0
+    grade_neigbors: float = 0
     closest_base_distance: int = 0
     closest_enemy_base_distance: int = 0
     closest_ant_distance: int = 0
@@ -50,11 +50,38 @@ def line(src_cell: int, dst_cell: int, strength: int = 1):
     return f"LINE {src_cell} {dst_cell} {strength}"
 
 
-def make_lines(src_cell: Cell, dst_cell: Cell, strength: int = 1) -> str:
-    s = [
-        *[beacon(cell, strength) for cell in src_cell.routes[dst_cell.index][1]],
+def find_same_neighbors(first_cell: Cell, second_cell: Cell) -> List[int]:
+    return [
+        neighbor
+        for neighbor in first_cell.neighbors
+        if neighbor in second_cell.neighbors
     ]
-    return ";".join(s)
+
+
+def make_lines(
+    src_cell: Cell, dst_cell: Cell, cells: List[Cell], strength: int = 1
+) -> Tuple[str, List[int]]:
+    actions: List[str] = [beacon(src_cell.index, strength)]
+    beacons: List[int] = [src_cell.index]
+    route = src_cell.routes[dst_cell.index][1]
+    for cell_index in range(1, len(route) - 1):
+        same_neighbors = find_same_neighbors(
+            cells[route[cell_index - 1]], cells[route[cell_index + 1]]
+        )
+        best_cell = (
+            same_neighbors[0]
+            if len(same_neighbors) == 1
+            else min(
+                same_neighbors,
+                key=lambda neighbor: grade_cell(cells[cell_index - 1], cells[neighbor]),
+            )
+        )
+        beacons.append(best_cell)
+        actions.append(beacon(best_cell, strength))
+    beacons.append(dst_cell.index)
+    actions.append(beacon(dst_cell.index, strength))
+
+    return ";".join(actions), beacons
 
 
 def initilize_cells() -> List[Cell]:
@@ -245,21 +272,21 @@ def set_grade_neigbors(cell: Cell) -> float:
         if cells[neighbor].cell_type == CellType.EMPTY:
             grade += 1
         elif cells[neighbor].cell_type == CellType.CRYSTAL:
-            grade += 5 if is_ending_of_game(cells) else 3
+            grade += 7 if is_ending_of_game(cells) else 2
         elif cells[neighbor].cell_type == CellType.EGG:
-            grade += 5 if is_beggining_of_game(cells) else 3
-    return grade / 5
+            grade += 8 if is_beggining_of_game(cells) else 3
+    return grade / 15
 
 
 def set_cells_grade_neigbors(cells: List[Cell]) -> List[Cell]:
     for cell in cells:
-        cell.grade_neighbors = set_grade_neigbors(cell)
+        cell.grade_neigbors = set_grade_neigbors(cell)
     return cells
 
 
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     grade: float = src_cell.routes[dst_cell.index][0]
-    grade -= dst_cell.grade_neigbors
+    # grade -= dst_cell.grade_neigbors
     grade += dst_cell.closest_ant_distance * 0.8
     grade += dst_cell.closest_base_distance * 0.3
     grade -= dst_cell.closest_enemy_base_distance * 0.15
@@ -369,35 +396,41 @@ def make_chain(
             best_resource = get_best_cell(cells[beacon], chain_cells)
             distance = cells[beacon].routes[best_resource.index][0]
             options.append((distance, cells[beacon], best_resource))
-        best_option = min(options, key=lambda option: option[0])
+        distance, src, target = min(options, key=lambda option: option[0])
 
         chain_cells = [
             chain_cell
             for chain_cell in chain_cells
-            if chain_cell.index not in beacons
-            and chain_cell.index != best_option[2].index
+            if chain_cell.index not in beacons and chain_cell.index != target.index
         ]
 
         ants_needed_for_target = max(
             ANTS_NEEDED_FOR_TARGET,
-            opponent_attack_chain_streangth(best_option[2], cells) + 1,
+            opponent_attack_chain_streangth(target, cells) + 1,
         )
-        num_ants_available -= (best_option[0] + 1) * ants_needed_for_target
+        num_ants_available -= (distance + 1) * ants_needed_for_target
 
         new_beacons_state = beacons.copy()
-        new_beacons_state.update(best_option[1].routes[best_option[2].index][1])
+        new_beacons_state.update(src.routes[target.index][1])
         ants_per_beacon = total_ants // len(new_beacons_state)
         if ants_per_beacon < ants_needed_for_target:
             continue
 
         if num_ants_available < 0:
             break
+        new_actions, new_beacons = make_lines(
+            src,
+            target,
+            cells,
+            calculate_strength(target),
+        )
+        actions.append(new_actions)
+        beacons.update(new_beacons)
         actions.append(
-            make_lines(
-                best_option[1], best_option[2], calculate_strength(best_option[2])
+            debug(
+                f"Target from {src.index} To: {target.index} Total grade: {grade_cell(src, target)} D: {src.routes[target.index][0]} CB: {target.closest_base_distance} CEB: {target.closest_enemy_base_distance} GN: {target.grade_neigbors}"
             )
         )
-        beacons.update(best_option[1].routes[best_option[2].index][1])
     if len(actions) == 0:
         actions.extend(
             line(
@@ -470,9 +503,9 @@ if __name__ == "__main__":
                 cells,
                 min(number_ants(cells) // 5, len(target_cells)),
             ),
-            debug(
-                f"scored points: {left_points(cells)} total: {total_points(cells)} ratio: {left_points(cells)/total_points(cells)}"
-            ),
+            # debug(
+            #     f"scored points: {left_points(cells)} total: {total_points(cells)} ratio: {left_points(cells)/total_points(cells)}"
+            # ),
             # debug(f"turn: {game_turn} time: {time.time() - t} seconds"),
         ]
 

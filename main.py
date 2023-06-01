@@ -69,11 +69,11 @@ def make_lines(
             cells[route[cell_index - 1]], cells[route[cell_index + 1]]
         )
         best_cell = (
-            same_neighbors[0]
+            route[cell_index]
             if len(same_neighbors) == 1
             else min(
                 same_neighbors,
-                key=lambda neighbor: grade_cell(cells[cell_index - 1], cells[neighbor]),
+                key=lambda neighbor: grade_beacon(cells[neighbor]),
             )
         )
         beacons.append(best_cell)
@@ -284,6 +284,17 @@ def set_cells_grade_neigbors(cells: List[Cell]) -> List[Cell]:
     return cells
 
 
+def grade_beacon(dst_cell: Cell) -> float:
+    grade: float = dst_cell.closest_ant_distance * 0.5
+    if dst_cell.opp_ants > dst_cell.my_ants:
+        grade += 0.5
+    if dst_cell.cell_type == CellType.EGG:
+        grade -= 5 if is_beggining_of_game(cells) else 3
+    if dst_cell.cell_type == CellType.CRYSTAL:
+        grade -= 5 if is_ending_of_game(cells) else 2
+    return grade
+
+
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     grade: float = src_cell.routes[dst_cell.index][0]
     # grade -= dst_cell.grade_neigbors
@@ -433,10 +444,11 @@ def make_chain(
         )
     if len(actions) == 0:
         actions.extend(
-            line(
-                base,
-                get_closest_cell(cells[base], get_crystal_cells(cells)).index,
-            )
+            make_lines(
+                cells[base],
+                get_closest_cell(cells[base], get_crystal_cells(cells)),
+                cells,
+            )[0]
             for base in bases
         )
     return [*actions]

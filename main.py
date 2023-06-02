@@ -99,7 +99,8 @@ def make_lines(
     for cell_index in beacons[1:-1]:
         current_cell: Cell = cells[cell_index]
         current_beacon_strength = max(0, chain_strength - over_ants)
-        actions.append(beacon(cell_index, current_beacon_strength))
+        if current_beacon_strength != 0:
+            actions.append(beacon(cell_index, current_beacon_strength))
         num_ants -= current_beacon_strength
         over_ants = max(0, current_cell.my_ants - chain_strength)
     actions.append(beacon(dst_cell.index, num_ants))
@@ -432,11 +433,11 @@ def make_chain(
         )
         actions.append(new_actions)
         beacons.update(new_beacons)
-        actions.append(
-            debug(
-                f"Target from {src.index} To: {target.index} Total grade: {grade_cell(src, target)} D: {src.routes[target.index][0]} CB: {target.closest_base_distance} CEB: {target.closest_enemy_base_distance} GN: {target.grade_neigbors}"
-            )
-        )
+        # actions.append(
+        #     debug(
+        #         f"Target from {src.index} To: {target.index} Total grade: {grade_cell(src, target)} D: {src.routes[target.index][0]} CB: {target.closest_base_distance} CEB: {target.closest_enemy_base_distance} GN: {target.grade_neigbors}"
+        #     )
+        # )
         routes.append((new_beacons, ants_strength_for_target, sum_ants_for_target))
     if len(routes) == 0:
         for base in bases:

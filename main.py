@@ -83,15 +83,12 @@ def make_route_for_target(
 def make_lines(
     src_cell: Cell, dst_cell: Cell, cells: List[Cell], num_ants: int
 ) -> Tuple[str, List[int]]:
-    beacons = make_route_for_target(src_cell, dst_cell, cells)
-    beacons_strength: List[Tuple[int, int]] = [
-        (beacon, cells[beacon].my_ants) for beacon in beacons
-    ]
+    beacons: List[int] = make_route_for_target(src_cell, dst_cell, cells)
     chain_strength = num_ants // len(beacons)
     left_ants = num_ants % len(beacons) + 1
     actions: List[str] = [beacon(src_cell.index, chain_strength)]
     num_ants -= chain_strength
-    over_ants = beacons_strength[0][1] - chain_strength
+    over_ants = max(0, cells[beacons[0]].my_ants - chain_strength)
     # if game_turn == 6:
     #     raise Exception(num_ants)
     # If passing from cell to antoher cell and it's passing the chain strength also the current chain
@@ -99,33 +96,13 @@ def make_lines(
     # For Example:
     # Ants: 6 -> 4 -> 1 -> 2 And the chain strentgth is 3 the
     # Result should be: 3 -> 4 -> 3 -> 3
-    if over_ants <= 0:
-        actions.extend(
-            [beacon(best_cell, chain_strength) for best_cell in beacons[1:-1]]
-        )
-        actions.append(beacon(dst_cell.index, chain_strength + left_ants))
-    else:
-        for cell_index in beacons[1:-1]:
-            current_cell: Cell = cells[cell_index]
-            if current_cell.my_ants == 0:
-                actions.append(beacon(cell_index, chain_strength))
-                num_ants -= chain_strength
-                over_ants = 0
-                continue
-            if over_ants >= chain_strength:
-                over_ants = current_cell.my_ants
-                continue
-            if current_cell.my_ants + over_ants > chain_strength:
-                actions.append(beacon(cell_index, chain_strength - over_ants))
-                num_ants -= chain_strength - over_ants
-                over_ants = current_cell.my_ants + over_ants - chain_strength
-                continue
-            else:
-                actions.append(beacon(cell_index, chain_strength))
-                num_ants -= chain_strength
-                over_ants = 0
-                continue
-        actions.append(beacon(dst_cell.index, num_ants))
+    for cell_index in beacons[1:-1]:
+        current_cell: Cell = cells[cell_index]
+        current_beacon_strength = max(0, chain_strength - over_ants)
+        actions.append(beacon(cell_index, current_beacon_strength))
+        num_ants -= current_beacon_strength
+        over_ants = max(0, current_cell.my_ants - chain_strength)
+    actions.append(beacon(dst_cell.index, num_ants))
 
     return ";".join(actions), beacons
 
@@ -412,6 +389,7 @@ def make_chain(
             *[base for base in bases],
         ]
     )
+    routes: List[Tuple[List[int], int, int]] = []
     num_ants_available = get_my_ants_amount(cells)
     total_ants = get_my_ants_amount(cells)
     for _ in range(chain_length):
@@ -430,16 +408,17 @@ def make_chain(
             if chain_cell.index not in beacons and chain_cell.index != target.index
         ]
 
-        ants_needed_for_target = max(
+        ants_strength_for_target = max(
             ANTS_NEEDED_FOR_TARGET,
             opponent_attack_chain_streangth(target, cells) + 1,
         )
-        num_ants_available -= (distance + 1) * ants_needed_for_target
+        sum_ants_for_target = (distance + 1) * ants_strength_for_target
+        num_ants_available -= sum_ants_for_target
 
         new_beacons_state = beacons.copy()
         new_beacons_state.update(src.routes[target.index][1])
         ants_per_beacon = total_ants // len(new_beacons_state)
-        if ants_per_beacon < ants_needed_for_target:
+        if ants_per_beacon < ants_strength_for_target:
             continue
 
         if num_ants_available < 0:
@@ -449,7 +428,7 @@ def make_chain(
             src,
             target,
             cells,
-            (distance + 1) * ants_needed_for_target,
+            sum_ants_for_target,
         )
         actions.append(new_actions)
         beacons.update(new_beacons)
@@ -458,19 +437,25 @@ def make_chain(
                 f"Target from {src.index} To: {target.index} Total grade: {grade_cell(src, target)} D: {src.routes[target.index][0]} CB: {target.closest_base_distance} CEB: {target.closest_enemy_base_distance} GN: {target.grade_neigbors}"
             )
         )
-    if len(actions) == 0:
+        routes.append((new_beacons, ants_strength_for_target, sum_ants_for_target))
+    if len(routes) == 0:
         for base in bases:
             target = get_closest_cell(cells[base], get_crystal_cells(cells))
-            ants_needed_for_target = max(
+            ants_strength_for_target = max(
                 ANTS_NEEDED_FOR_TARGET,
                 opponent_attack_chain_streangth(target, cells) + 1,
             )
             distance = cells[base].routes[target.index][0]
             actions.append(
                 make_lines(
-                    cells[base], target, cells, (distance + 1) * ants_needed_for_target
+                    cells[base],
+                    target,
+                    cells,
+                    (distance + 1) * ants_strength_for_target,
                 )[0]
             )
+    else:
+        pass
     return [*actions]
 
 

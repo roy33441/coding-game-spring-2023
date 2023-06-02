@@ -1,0 +1,3 @@
+[submodule "SpringChallenge2023"]
+	path = SpringChallenge2023
+	url = https://github.com/CodinGame/SpringChallenge2023.git

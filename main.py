@@ -90,6 +90,7 @@ def is_route_ready(route: Tuple[List[int], int, int], cells: List[Cell]) -> bool
 
 def make_lines(routes: List[Tuple[List[int], int, int]]) -> str:
     actions: List[str] = []
+    actions.append(debug(f"Routes are {routes}"))
     for route in routes:
         beacons, route_strength, num_ants = route
         route_actions: List[str] = [beacon(beacons[0], route_strength)]
@@ -404,17 +405,14 @@ def make_chain(
             distance = cells[beacon].routes[best_resource.index][0]
             options.append((distance, cells[beacon], best_resource))
         distance, src, target = min(options, key=lambda option: option[0])
+        actions.append(debug(f"Here {distance=} {src.index=} {target.index=}"))
         if src.index in unused_bases:
             unused_bases.remove(src.index)
 
-        chain_cells = [
-            chain_cell
-            for chain_cell in chain_cells
-            if chain_cell.index not in beacons and chain_cell.index != target.index
-        ]
         new_beacons = make_route_for_target(src_cell=src, dst_cell=target, cells=cells)
         # If already is a beacon that calculated so remove that from the calculation of the ants consumed
         if src.index in beacons:
+            actions.append(debug(f"{src.index } inside beacons {beacons}"))
             distance -= 1
             src = cells[new_beacons[1]]
             new_beacons = new_beacons[1:]
@@ -425,6 +423,9 @@ def make_chain(
         )
         sum_ants_for_target = (distance + 1) * ants_strength_for_target
 
+
+        actions.append(debug(f"{target.index=} {distance=} {sum_ants_for_target=} {src.index=}"))
+
         new_beacons_state = beacons.copy()
         new_beacons_state.update(src.routes[target.index][1])
 
@@ -434,6 +435,12 @@ def make_chain(
         num_ants_available -= sum_ants_for_target
         routes.append((new_beacons, ants_strength_for_target, sum_ants_for_target))
         beacons.update(new_beacons)
+
+        chain_cells = [
+            chain_cell
+            for chain_cell in chain_cells
+            if chain_cell.index not in beacons and chain_cell.index != target.index
+        ]
 
         # actions.append(new_actions)
         # actions.append(

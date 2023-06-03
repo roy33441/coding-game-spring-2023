@@ -3,6 +3,7 @@ import math, time
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Any, Dict, Set, cast
 from enum import Enum
+from collections import defaultdict
 
 
 global game_turn, MAX_TURNS, MAX_DEEP
@@ -32,6 +33,22 @@ class Cell:
     closest_base_distance: int = 0
     closest_enemy_base_distance: int = 0
     closest_ant_distance: int = 0
+
+    def __hash__(self):
+        return self.index
+
+    def __eq__(self, other):
+        if isinstance(other, Cell):
+            return self.index == other.index
+        elif isinstance(other, int):
+            return self.index == other
+        return False
+
+@dataclass
+class BaseRouteInfo:
+    routes: List[Tuple[int]]
+    beacons: set[int]
+    available_ants: int
 
 
 def sigmoid(x):
@@ -90,7 +107,6 @@ def is_route_ready(route: Tuple[List[int], int, int], cells: List[Cell]) -> bool
 
 def make_lines(routes: List[Tuple[List[int], int, int]]) -> str:
     actions: List[str] = []
-    actions.append(debug(f"Routes are {routes}"))
     for route in routes:
         beacons, route_strength, num_ants = route
         route_actions: List[str] = [beacon(beacons[0], route_strength)]
@@ -389,13 +405,16 @@ def opponent_attack_chain_streangth(cell: Cell, cells: List[Cell]) -> int:
 
 
 def make_chain(
-    bases: List[int], chain_cells: List[Cell], cells: List[Cell], chain_length: int
+    bases: List[int], chain_cells: List[Cell], cells: List[Cell], chain_length: int, bases_ants_amount: Dict[int,int]
 ) -> List[str]:
     actions: List[str] = []
     beacons: Set[int] = set()
-    routes: List[Tuple[List[int], int, int]] = []
+    #routes: List[Tuple[List[int], int, int]] = []
     num_ants_available = get_my_ants_amount(cells)
     unused_bases = bases.copy()
+
+    bases_info: Dict[int, BaseRouteInfo] = {b: BaseRouteInfo([], {b}, bases_ants_amount[b]) for b in bases}
+
     for _ in range(chain_length):
         if not chain_cells:
             return actions
@@ -404,15 +423,17 @@ def make_chain(
             best_resource = get_best_cell(cells[beacon], chain_cells)
             distance = cells[beacon].routes[best_resource.index][0]
             options.append((distance, cells[beacon], best_resource))
-        distance, src, target = min(options, key=lambda option: option[0])
-        actions.append(debug(f"Here {distance=} {src.index=} {target.index=}"))
+        distance, src, target = min(options, key=lambda option: grade_cell(option[1], option[2]))#option[0])
+
+        relevant_beacon = [b for b, info in bases_info.items() if src in info.beacons][0]
+        info = bases_info[relevant_beacon]
+
         if src.index in unused_bases:
             unused_bases.remove(src.index)
 
         new_beacons = make_route_for_target(src_cell=src, dst_cell=target, cells=cells)
         # If already is a beacon that calculated so remove that from the calculation of the ants consumed
         if src.index in beacons:
-            actions.append(debug(f"{src.index } inside beacons {beacons}"))
             distance -= 1
             src = cells[new_beacons[1]]
             new_beacons = new_beacons[1:]
@@ -421,20 +442,22 @@ def make_chain(
             ANTS_NEEDED_FOR_TARGET,
             opponent_attack_chain_streangth(target, cells) + 1,
         )
+
         sum_ants_for_target = (distance + 1) * ants_strength_for_target
-
-
-        actions.append(debug(f"{target.index=} {distance=} {sum_ants_for_target=} {src.index=}"))
-
         new_beacons_state = beacons.copy()
         new_beacons_state.update(src.routes[target.index][1])
+
+        num_ants_available = info.available_ants
 
         if num_ants_available - sum_ants_for_target < 0:
             continue
 
         num_ants_available -= sum_ants_for_target
-        routes.append((new_beacons, ants_strength_for_target, sum_ants_for_target))
+        #routes.append((new_beacons, ants_strength_for_target, sum_ants_for_target))
         beacons.update(new_beacons)
+        bases_info[relevant_beacon].beacons.update(new_beacons)
+        bases_info[relevant_beacon].available_ants = num_ants_available
+        bases_info[relevant_beacon].routes.append((new_beacons, ants_strength_for_target, sum_ants_for_target))
 
         chain_cells = [
             chain_cell
@@ -448,8 +471,8 @@ def make_chain(
         #         f"Target from {src.index} To: {target.index} Total grade: {grade_cell(src, target)} D: {src.routes[target.index][0]} CB: {target.closest_base_distance} CEB: {target.closest_enemy_base_distance} GN: {target.grade_neigbors}"
         #     )
         # )
-    if len(routes) == 0:
-        pass
+    #if len(routes) == 0:
+    #    pass
         # for base in bases:
         #     target = get_closest_cell(cells[base], get_crystal_cells(cells))
         #     ants_strength_for_target = max(
@@ -465,14 +488,16 @@ def make_chain(
         #             (distance + 1) * ants_strength_for_target,
         #         )[0]
         #     )
-    else:
+    #else:
+    for base, info in bases_info.items():
+        routes = info.routes
         used_ants = sum(route[2] for route in routes)
+        total_ants = bases_ants_amount[base]
         actions.append(debug(f"{used_ants} ROUTES: {len(routes)}"))
-        total_ants = get_my_ants_amount(cells)
         # Should never happend 🤷
         if total_ants < used_ants:
             raise Exception("wtf")
-        else:
+        elif len(info.routes) > 0:
             added_index = 0
             # Find the first route that is missing ants and bonus him.
             for route in range(len(routes)):
@@ -517,6 +542,13 @@ def cell_closest_ant_distance(cell: Cell, my_ants: List[Cell]) -> int:
     return cell.routes[closest_ant.index][0]
 
 
+def get_bases_ants_amount(my_ants: List[Cell], my_bases: List[Cell]) -> Dict[int, int]:
+    bases_ants_amount: Dict[int, int] = defaultdict(int)
+    for ant in my_ants:
+        closest_base = get_closest_cell(ant, my_bases)
+        bases_ants_amount[closest_base.index] += ant.my_ants
+    return bases_ants_amount
+
 if __name__ == "__main__":
     t = time.time()
     cells = initilize_cells()
@@ -528,6 +560,7 @@ if __name__ == "__main__":
     cells = calculate_all_distances(cells)
     cells = update_cells_closest_base_distance(cells, my_bases)
     cells = update_cells_closest_enemy_base_distance(cells, enemy_bases)
+    
 
     # game loop
     while True:
@@ -543,13 +576,17 @@ if __name__ == "__main__":
             target_cells = [*crystal_cells]
         else:
             target_cells = [*crystal_cells, *eggs_cells]
+        
+        my_ants = get_my_ant_cells(cells)
+        bases_ants_amount = get_bases_ants_amount(my_ants, [cells[b] for b in my_bases])
 
         actions = [
             *make_chain(
                 my_bases,
                 target_cells.copy(),
                 cells,
-                min(number_ants(cells) // 5, len(target_cells)),
+                min(number_ants(cells) // 5, len(target_cells)), #TODO: Consider to limit to target_cells / 2
+                bases_ants_amount=bases_ants_amount,
             ),
             # debug(
             #     f"scored points: {left_points(cells)} total: {total_points(cells)} ratio: {left_points(cells)/total_points(cells)}"

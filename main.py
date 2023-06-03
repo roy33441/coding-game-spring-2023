@@ -417,7 +417,7 @@ def make_chain(
 
     for _ in range(chain_length):
         if not chain_cells:
-            return actions
+            break
         options: List[Tuple[int, Cell, Cell]] = []
         for beacon in unused_bases if len(unused_bases) != 0 else beacons:
             best_resource = get_best_cell(cells[beacon], chain_cells)

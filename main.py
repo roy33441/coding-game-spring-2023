@@ -105,7 +105,7 @@ def is_route_ready(route: Tuple[List[int], int, int], cells: List[Cell]) -> bool
     return True
 
 
-def make_lines(routes: List[Tuple[List[int], int, int]]) -> str:
+def make_lines(routes: List[Tuple[List[int], int, int]], cells: List[Cell]) -> str:
     actions: List[str] = []
     for route in routes:
         beacons, route_strength, num_ants = route
@@ -521,7 +521,7 @@ def make_chain(
                 routes[added_index][1],
                 routes[added_index][2] + total_ants - used_ants,
             )
-        actions.extend([make_lines(routes)])
+        actions.extend([make_lines(routes, cells)])
 
     return [*actions]
 

@@ -46,7 +46,7 @@ class Cell:
 
 @dataclass
 class BaseRouteInfo:
-    routes: List[Tuple[int]]
+    routes: List[Tuple[List[int],int,int]]
     beacons: set[int]
     available_ants: int
 
@@ -493,6 +493,17 @@ def make_chain(
         routes = info.routes
         used_ants = sum(route[2] for route in routes)
         total_ants = bases_ants_amount[base]
+
+        default_strength_routes_indexes = [i for i,r in enumerate(routes) if r[1] == ANTS_NEEDED_FOR_TARGET]
+        default_strength_routes_beacons_amount = sum(len(routes[i][0]) for i in default_strength_routes_indexes)
+        if default_strength_routes_beacons_amount > 0:
+            add_to_default =  (total_ants - used_ants) // default_strength_routes_beacons_amount
+            used_ants += default_strength_routes_beacons_amount * (add_to_default)
+            new_default = ANTS_NEEDED_FOR_TARGET + add_to_default
+            for i in default_strength_routes_indexes:
+                i_routes = routes[i][0]
+                routes[i] = i_routes, ANTS_NEEDED_FOR_TARGET + add_to_default, new_default * len(i_routes)
+
         actions.append(debug(f"{used_ants} ROUTES: {len(routes)}"))
         # Should never happend 🤷
         if total_ants < used_ants:

@@ -142,6 +142,7 @@ def make_lines(routes: List[BaseRouteInfo], cells: List[Cell]) -> str:
         # beacons, route_strength, num_ants = route
         num_ants = route.route_ants
         route_strength = num_ants // len(route.beacons)
+
         if len(route.beacons) == 1:
             actions.append(beacon(route.beacons[0], num_ants))
             continue
@@ -155,30 +156,56 @@ def make_lines(routes: List[BaseRouteInfo], cells: List[Cell]) -> str:
                 )
             )
             continue
-        current_beacons: List[Beacon] = []
-        start_beacon = 0
-        if route.is_primary:
-            start_beacon = 1
-            num_ants -= route_strength
-            current_beacons.append(Beacon(route.beacons[0], route_strength))
-        over_ants = max(0, cells[route.beacons[0]].my_ants - route_strength)
-        for cell_index in route.beacons[start_beacon:-1]:
+
+        current_beacons: List[Beacon] = [Beacon(route.beacons[0], route_strength)]
+        num_ants -= route_strength
+        start_beacon = 1
+        over_ants = max(0, cells[route.beacons[0]].my_ants - route_strength)  # 14
+        over_ants_history: List[int] = [0]
+        route_ants: List[int] = [cells[beacon].my_ants for beacon in route.beacons]
+        for loop_index, cell_index in enumerate(route.beacons[start_beacon:-1]):
             current_cell: Cell = cells[cell_index]
-            current_beacon_strength = max(0, route_strength - over_ants)
+            needed = max(
+                0,
+                route_strength * (len(route.beacons) - loop_index - 2)
+                - sum(route_ants[loop_index + 2 :]),
+            )
+            actions.append(debug(f"{needed=} {current_cell.my_ants=}"))
+            current_beacon_strength = max(
+                0,
+                route_strength - over_ants,
+                min(current_cell.my_ants - needed, route_strength),
+            )
             curr_beacon = Beacon(cell_index, current_beacon_strength)
+
+            my_future_ants = current_cell.my_ants + over_ants
+            prev_cell_ants = over_ants_history[-1] + cells[cell_index - 1].my_ants
+            if my_future_ants < route_strength:
+                diff = prev_cell_ants - my_future_ants
+                # if just 1 can't divide
+                if diff > 1:
+                    add_to_me = diff // 2
+                    curr_beacon.strength += (
+                        current_beacons[-1].strength + add_to_me - prev_cell_ants
+                    )
+                    current_beacons[-1].strength = prev_cell_ants - add_to_me
+
             current_beacons.append(curr_beacon)
             num_ants -= current_beacon_strength
+            over_ants_history.append(over_ants)
             over_ants = max(0, current_cell.my_ants - current_beacon_strength)
 
         current_beacons.append(Beacon(route.beacons[-1], route_strength))
         num_ants -= route_strength
         # If is from the base make the base with the most stregnth that he can
         beacon_index = len(current_beacons) - 1
-        while num_ants > 0:
+        while num_ants > 0 and beacon_index != -1:
             if cells[current_beacons[beacon_index].index].my_ants < route_strength:
                 current_beacons[beacon_index].strength += num_ants
                 num_ants = 0
             beacon_index -= 1
+        if beacon_index == -1 and num_ants > 0:
+            current_beacons[-1].strength += num_ants
         actions.append(
             ";".join([str(beacon) for beacon in current_beacons if beacon.strength > 0])
         )
@@ -511,15 +538,16 @@ def make_chain(
     unused_bases = bases.copy()
 
     for route in last_routes:
+        ants_strength_for_target = max(
+            ANTS_NEEDED_FOR_TARGET,
+            opponent_attack_chain_streangth(cells[route.beacons[-1]], cells),
+        )
         if (
             route.is_primary
             and cells[route.beacons[-1]].resources > 0
+            and ants_strength_for_target <= route.strength
             and is_route_ready(route, cells)
         ):
-            ants_strength_for_target = max(
-                ANTS_NEEDED_FOR_TARGET,
-                opponent_attack_chain_streangth(cells[route.beacons[-1]], cells),
-            )
             route.strength = ants_strength_for_target
             route.route_ants = len(route.beacons) * ants_strength_for_target
             num_ants_available -= route.route_ants
@@ -610,7 +638,7 @@ def make_chain(
         num_ants_available -= sum_ants_for_target + added_ants
 
         # If is the ending of other route
-        if any([route.beacons[-1] == origin_src.index for route in routes]):
+        if False and any([route.beacons[-1] == origin_src.index for route in routes]):
             merging_route = next(
                 route for route in routes if route.beacons[-1] == origin_src.index
             )
@@ -638,6 +666,9 @@ def make_chain(
             for chain_cell in chain_cells
             if chain_cell.index not in beacons and chain_cell.index != target.index
         ]
+        if time.time() - t > 0.09:
+            break
+
     if len(routes) == 0:
         options = []
         for beacon in unused_bases if len(unused_bases) != 0 else beacons:
@@ -663,50 +694,41 @@ def make_chain(
         used_ants = sum(route.route_ants for route in routes)
         actions.append(debug(f"{used_ants} ROUTES: {len(routes)}"))
 
-        smallest_strength = min(routes, key=lambda route: route.strength).strength
-        default_strength_routes_indexes = [
-            route_index
-            for route_index, route in enumerate(routes)
-            if route.strength == smallest_strength and not is_route_ready(route, cells)
-        ]
+        while total_ants - used_ants > 0:
+            smallest_strength = min(routes, key=lambda route: route.strength).strength
+            strength_routes = routes[::-1] if is_beggining_of_game(cells) else routes
 
-        default_strength_routes_beacons_amount = sum(
-            len(routes[i].beacons) for i in default_strength_routes_indexes
-        )
+            route = next(
+                current_route
+                for current_route in strength_routes
+                if current_route.strength == smallest_strength
+            )
+            beacons_amount = len(route.beacons)
 
-        if default_strength_routes_beacons_amount > 0:
-            add_to_default = (
-                total_ants - used_ants
-            ) // default_strength_routes_beacons_amount
-            used_ants += default_strength_routes_beacons_amount * (add_to_default)
-            new_strength = smallest_strength + add_to_default
-            for index in default_strength_routes_indexes:
-                current_route = routes[index].beacons.copy()
-                routes[index] = BaseRouteInfo(
-                    current_route,
-                    new_strength,
-                    new_strength * len(current_route),
-                    routes[index].origin,
-                    routes[index].is_primary,
-                )
+            if beacons_amount >= total_ants - used_ants:
+                break
+            route.strength += 1
+            route.route_ants += beacons_amount
+            used_ants += beacons_amount
 
         # Should never happend 🤷
         if total_ants < used_ants:
-            raise Exception("wtf")
+            raise Exception("wtf", total_ants, used_ants, routes)
         elif len(routes) > 0:
-            added_index = -1
+            leftover_routes = routes[::-1] if is_beggining_of_game(cells) else routes
+            added_index = 0
             # Find the first route that is missing ants and bonus him.
-            for route in range(len(routes) - 1, 0, -1):
-                if not is_route_ready(routes[route], cells):
-                    added_index = route
+            for route_index in range(len(leftover_routes)):
+                if not is_route_ready(leftover_routes[route_index], cells):
+                    added_index = route_index
                     break
             # actions.append(debug(f"AI: {added_index} ORG: {routes[added_index][2]} NEW: {routes[added_index][2] + total_ants - used_ants}"))
-            routes[added_index] = BaseRouteInfo(
-                routes[added_index].beacons,
-                routes[added_index].strength,
-                routes[added_index].route_ants + total_ants - used_ants,
-                routes[added_index].origin,
-                routes[added_index].is_primary,
+            leftover_routes[added_index] = BaseRouteInfo(
+                leftover_routes[added_index].beacons,
+                leftover_routes[added_index].strength,
+                leftover_routes[added_index].route_ants + total_ants - used_ants,
+                leftover_routes[added_index].origin,
+                leftover_routes[added_index].is_primary,
             )
             actions.append(debug(f"{added_index=} {total_ants=} {used_ants=}"))
         actions.extend([make_lines(routes.copy(), cells)])

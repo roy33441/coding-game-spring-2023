@@ -452,7 +452,7 @@ def grade_target_distance_from_bases_and_source(source: Cell, target: Cell) -> f
     bases_diff = target.closest_base_distance / target.closest_enemy_base_distance
     distance: float = source.routes[target.index][0]
     CLOSE_BASE_WEIGHT = 0.5
-    if target.cell_type == CellType.CRYSTAL and bases_diff <= 0.5 and not ending:
+    if target.cell_type == CellType.CRYSTAL and bases_diff < 0.4 and not ending:
         return 1000
     if target.cell_type == CellType.CRYSTAL and bases_diff <= 1.4:
         return (
@@ -932,35 +932,38 @@ if __name__ == "__main__":
 
     # game loop
     while True:
-        my_score, enemy_score = [int(i) for i in input().split()]
-        cells = update_cells(cells)
-        if game_turn != 1:
-            t = time.time()
-        crystal_cells = get_crystal_cells(cells)
-        ending = is_ending_of_game(cells)
-        eggs_cells = get_eggs_cells(cells)
-        set_cells_grade_neigbors(cells)
-        set_cell_closest_ant_distance(cells)
-        # if is_beggining_of_game(cells) and game_turn < 5 and eggs_cells:
-        #     target_cells = [*eggs_cells]
-        if is_ending_of_game(cells) or number_ants(cells) > sum(
-            crystal.resources for crystal in crystal_cells
-        ):
-            target_cells = [*crystal_cells]
-        else:
-            target_cells = [*crystal_cells, *eggs_cells]
+        try:
+            my_score, enemy_score = [int(i) for i in input().split()]
+            cells = update_cells(cells)
+            if game_turn != 1:
+                t = time.time()
+            crystal_cells = get_crystal_cells(cells)
+            ending = is_ending_of_game(cells)
+            eggs_cells = get_eggs_cells(cells)
+            set_cells_grade_neigbors(cells)
+            set_cell_closest_ant_distance(cells)
+            # if is_beggining_of_game(cells) and game_turn < 5 and eggs_cells:
+            #     target_cells = [*eggs_cells]
+            if is_ending_of_game(cells) or number_ants(cells) > sum(
+                crystal.resources for crystal in crystal_cells
+            ):
+                target_cells = [*crystal_cells]
+            else:
+                target_cells = [*crystal_cells, *eggs_cells]
 
-        my_ants = get_my_ant_cells(cells)
-        # bases_ants_amount = get_bases_ants_amount(my_ants, [cells[b] for b in my_bases])
-        actions, current_routes = make_chain(
-            my_bases,
-            target_cells.copy(),
-            cells,
-            min(number_ants(cells) // 5, len(target_cells)),
-            last_routes,
-        )
-        last_routes = current_routes
+            my_ants = get_my_ant_cells(cells)
+            # bases_ants_amount = get_bases_ants_amount(my_ants, [cells[b] for b in my_bases])
+            actions, current_routes = make_chain(
+                my_bases,
+                target_cells.copy(),
+                cells,
+                min(number_ants(cells) // 5, len(target_cells)),
+                last_routes,
+            )
+            last_routes = current_routes
 
-        do_actions(actions)
-        # print(f"Turn took: {time.time() - t}", file=sys.stderr)
-        game_turn += 1
+            do_actions(actions)
+            # print(f"Turn took: {time.time() - t}", file=sys.stderr)
+            game_turn += 1
+        except:
+            print("WAIT")

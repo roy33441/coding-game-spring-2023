@@ -44,6 +44,7 @@ class Cell:
     closest_base_distance: int = 0
     closest_enemy_base_distance: int = 0
     closest_ant_distance: int = 0
+    closest_base: int = 0
 
     def __hash__(self):
         return self.index
@@ -63,6 +64,7 @@ class BaseRouteInfo:
     route_ants: int
     origin: int
     is_primary: bool = True
+    max_strength: int = 100000
 
 
 def sigmoid(x):
@@ -137,6 +139,7 @@ def find_route_line_direction(route: BaseRouteInfo, cells: List[Cell]) -> BaseRo
 # Result should be: 3 -> 4 -> 3 -> 3
 def make_lines(routes: List[BaseRouteInfo], cells: List[Cell]) -> str:
     actions: List[str] = []
+    print(routes, file=sys.stderr)
     for curr_route in routes.copy():
         route = replace(curr_route)
         # route = find_route_line_direction(route, cells)
@@ -450,12 +453,8 @@ def grade_target_distance_from_bases_and_source(source: Cell, target: Cell) -> f
     bases_diff = target.closest_base_distance / target.closest_enemy_base_distance
     distance: float = source.routes[target.index][0]
     CLOSE_BASE_WEIGHT = 0.5
-    if target.cell_type == CellType.CRYSTAL:
-        if bases_diff <= 1.25:
-            return abs(
-                target.closest_base_distance - target.closest_enemy_base_distance
-            )
-
+    if target.cell_type == CellType.CRYSTAL and bases_diff <= 1.4:
+        return abs(target.closest_base_distance - target.closest_enemy_base_distance)
     return distance + target.closest_base_distance * CLOSE_BASE_WEIGHT
 
 
@@ -464,6 +463,7 @@ def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     # grade -= dst_cell.grade_neigbors
     grade = grade_target_distance_from_bases_and_source(src_cell, dst_cell)
     grade += dst_cell.closest_ant_distance * 0.3
+    grade += src_cell.routes[dst_cell.closest_base][0] * 0.3
 
     # grade += dst_cell.closest_base_distance * 0.3
     # grade -= dst_cell.closest_enemy_base_dis tance * 0.15
@@ -625,6 +625,10 @@ def make_chain(
             else ANTS_NEEDED_FOR_TARGET_EGG,
             opponent_attack_chain_streangth(target, cells) + 1,
         )
+        route_max_strength = max(
+            10000, max(cells[cell_index].resources for cell_index in new_beacons)
+        )
+        ants_strength_for_target = min(ants_strength_for_target, route_max_strength)
         # print(f"Turn left: {0.1 - time.time() + t}", file=sys.stderr)
         # # print(f"Find target took: {current_time - t}", file=sys.stderr)
         # If already is a beacon that calculated so remove that from the calculation of the ants consumed
@@ -644,12 +648,21 @@ def make_chain(
         # print(f"Turn left: {0.1 - time.time() + t}", file=sys.stderr)
         # print(f"F Search past beacons took: {current_time - t}", file=sys.stderr)
 
-        sum_ants_for_target = len(new_beacons) * ants_strength_for_target
+        sum_ants_for_target = (len(new_beacons)) * ants_strength_for_target
         new_beacons_state = beacons.copy()
         new_beacons_state.update(src.routes[target.index][1])
+        will_remove_beacon = (
+            ants_strength_for_target if new_beacons[0] in beacons else 0
+        )
 
-        if num_ants_available - sum_ants_for_target - added_ants < 0:
-            print("Not enogth ants!!!!!!!!!!", file=sys.stderr)
+        if (
+            num_ants_available - sum_ants_for_target - added_ants + will_remove_beacon
+            < 0
+        ):
+            print(
+                f"Not enogth ants!!!!!!!!!! {added_ants=} {num_ants_available=} {sum_ants_for_target=} {new_beacons=}",
+                file=sys.stderr,
+            )
             continue
 
         # Remove the unused bases
@@ -677,7 +690,6 @@ def make_chain(
 
         # print(f"Turn left: {0.1 - time.time() + t}", file=sys.stderr)
         # # print(f"Fix strengths took: {current_time - t}", file=sys.stderr)
-
         # There is change in past routes
         if added_ants > 0:
             for route in routes_to_primary:
@@ -710,6 +722,7 @@ def make_chain(
                     sum_ants_for_target,
                     origin_src.index,
                     is_route_primary,
+                    route_max_strength,
                 )
             )
         beacons.update(new_beacons)
@@ -763,8 +776,19 @@ def make_chain(
         used_ants = sum(route.route_ants for route in routes)
 
         while total_ants - used_ants > 0:
-            smallest_strength = min(routes, key=lambda route: route.strength).strength
-            strength_routes = routes[::-1] if is_beggining_of_game(cells) else routes
+            strength_routes = routes
+            #     route for route in routes if route.max_strength > route.strength
+            # ]
+            if not strength_routes:
+                strength_routes = routes
+            smallest_strength = min(
+                strength_routes, key=lambda route: route.strength
+            ).strength
+            strength_routes = (
+                strength_routes[::-1]
+                if is_beggining_of_game(cells)
+                else strength_routes
+            )
 
             route = next(
                 current_route
@@ -823,8 +847,8 @@ def update_cells_closest_base_distance(
     cells: List[Cell], bases: List[int]
 ) -> List[Cell]:
     for cell in cells:
-        closest_base = get_closest_cell(cell, [cells[b] for b in bases])
-        cell.closest_base_distance = cell.routes[closest_base.index][0]
+        cell.closest_base = get_closest_cell(cell, [cells[b] for b in bases]).index
+        cell.closest_base_distance = cell.routes[cell.closest_base][0]
     return cells
 
 

@@ -451,7 +451,7 @@ def grade_target_distance_from_bases_and_source(source: Cell, target: Cell) -> f
     distance: float = source.routes[target.index][0]
     CLOSE_BASE_WEIGHT = 0.5
     if target.cell_type == CellType.CRYSTAL:
-        if bases_diff <= 1.4:
+        if bases_diff <= 1.25:
             return abs(
                 target.closest_base_distance - target.closest_enemy_base_distance
             )
@@ -686,20 +686,20 @@ def make_chain(
 
         num_ants_available -= sum_ants_for_target + added_ants
 
+        MAX_ROUTE_SIZE = 4
+        routes_to_merge = [
+            route
+            for route in routes
+            if route.beacons[-1] == origin_src.index
+            and route.strength == ants_strength_for_target
+            and target.routes[route.beacons[0]][0] + 1
+            >= len(route.beacons) + len(new_beacons)
+            and len(route.beacons) < MAX_ROUTE_SIZE
+            # and len(new_beacons) == 1
+        ]
         # If is the ending of other route
-        if any(
-            [
-                route.beacons[-1] == origin_src.index
-                and route.strength == ants_strength_for_target
-                and target.routes[route.beacons[0]][0] + 1
-                >= len(route.beacons) + len(new_beacons)
-                # and len(new_beacons) == 1
-                for route in routes
-            ]
-        ):
-            merging_route = next(
-                route for route in routes if route.beacons[-1] == origin_src.index
-            )
+        if len(new_beacons) < MAX_ROUTE_SIZE and routes_to_merge:
+            merging_route = routes_to_merge[0]
             merging_route.beacons.extend(new_beacons)
             merging_route.route_ants += sum_ants_for_target
         else:
@@ -874,7 +874,7 @@ if __name__ == "__main__":
         eggs_cells = get_eggs_cells(cells)
         set_cells_grade_neigbors(cells)
         set_cell_closest_ant_distance(cells)
-        if is_beggining_of_game(cells) and game_turn < 8 and eggs_cells:
+        if is_beggining_of_game(cells) and game_turn < 5 and eggs_cells:
             target_cells = [*eggs_cells]
         elif is_ending_of_game(cells):
             target_cells = [*crystal_cells]

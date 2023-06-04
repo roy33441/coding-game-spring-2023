@@ -452,6 +452,8 @@ def grade_target_distance_from_bases_and_source(source: Cell, target: Cell) -> f
     bases_diff = target.closest_base_distance / target.closest_enemy_base_distance
     distance: float = source.routes[target.index][0]
     CLOSE_BASE_WEIGHT = 0.5
+    if target.cell_type == CellType.CRYSTAL and bases_diff <= 0.5 and not ending:
+        return 1000
     if target.cell_type == CellType.CRYSTAL and bases_diff <= 1.4:
         return (
             distance * 0.2
@@ -463,10 +465,11 @@ def grade_target_distance_from_bases_and_source(source: Cell, target: Cell) -> f
 
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     # grade: float = src_cell.routes[dst_cell.index][0]
-    # grade -= dst_cell.grade_neigbors
     grade = grade_target_distance_from_bases_and_source(src_cell, dst_cell)
     grade += dst_cell.closest_ant_distance * 0.3
     grade += src_cell.routes[dst_cell.closest_base][0] * 0
+    grade -= dst_cell.grade_neigbors
+    grade -= 0.0001 if src_cell.index in my_bases else 0
 
     # grade += dst_cell.closest_base_distance * 0.3
     # grade -= dst_cell.closest_enemy_base_dis tance * 0.15
@@ -550,11 +553,18 @@ def find_route_to_primary(
     return routes_to_primay
 
 
-def opponent_attack_chain_streangth(cell: Cell, cells: List[Cell]) -> int:
+def opponent_attack_chain_streangth(
+    cell: Cell, cells: List[Cell], to_check: bool = False
+) -> int:
     streangths = [
         cell.opp_ants,
         max([cells[n].opp_ants for n in cell.neighbors]),
     ]
+    if (
+        to_check
+        and cell.closest_enemy_base_distance / cell.closest_base_distance <= 0.7
+    ):
+        return max(streangths) + 1
     return min(streangths)
 
 
@@ -570,6 +580,8 @@ def make_chain(
     routes: List[BaseRouteInfo] = []
     crystal_targets: List[Cell] = []
 
+    no_routes_chain_cells = chain_cells.copy()
+
     total_ants = get_my_ants_amount(cells)
     num_ants_available = total_ants
     unused_bases = bases.copy()
@@ -580,6 +592,7 @@ def make_chain(
             if cells[route.beacons[-1]].cell_type == CellType.CRYSTAL
             else ANTS_NEEDED_FOR_TARGET_EGG,
             opponent_attack_chain_streangth(cells[route.beacons[-1]], cells),
+            True,
         )
         if (
             route.is_primary
@@ -608,10 +621,10 @@ def make_chain(
     # print(f"F Past routes took: {current_time - t}", file=sys.stderr)
 
     for _ in range(chain_length):
-        print(
-            f"starting searching {[r.beacons for r in routes]} {[c.index for c in crystal_targets]}",
-            file=sys.stderr,
-        )
+        # print(
+        #     f"starting searching {[r.beacons for r in routes]} {[c.index for c in crystal_targets]}",
+        #     file=sys.stderr,
+        # )
         if not chain_cells:
             break
         options: List[Tuple[int, Cell, Cell, float]] = []
@@ -632,7 +645,7 @@ def make_chain(
         distance, src, target, grade = min(
             options, key=lambda option: grade_cell(option[1], option[2])
         )
-        print(f"besttt: {target.index=} {grade=} {src.index=}", file=sys.stderr)
+        # print(f"besttt: {target.index=} {grade=} {src.index=}", file=sys.stderr)
 
         new_beacons = make_route_for_target(src_cell=src, dst_cell=target, cells=cells)
         ants_strength_for_target = max(
@@ -640,6 +653,7 @@ def make_chain(
             if target.cell_type == CellType.CRYSTAL
             else ANTS_NEEDED_FOR_TARGET_EGG,
             opponent_attack_chain_streangth(target, cells) + 1,
+            True,
         )
         route_max_strength = max(
             -10000, max(cells[cell_index].resources for cell_index in new_beacons[1:])
@@ -676,10 +690,10 @@ def make_chain(
             num_ants_available - sum_ants_for_target - added_ants + will_remove_beacon
             < 0
         ):
-            print(
-                f"Not enogth ants!!!!!!!!!! {added_ants=} {num_ants_available=} {sum_ants_for_target=} {new_beacons=}",
-                file=sys.stderr,
-            )
+            # print(
+            #     f"Not enogth ants!!!!!!!!!! {added_ants=} {num_ants_available=} {sum_ants_for_target=} {new_beacons=}",
+            #     file=sys.stderr,
+            # )
             continue
 
         # Remove the unused bases
@@ -689,7 +703,9 @@ def make_chain(
         current_time = time.time()
         if src.index in beacons:
             should_remove_from_route = True
-            if src.index in bases:
+            if src.index in bases and any(
+                route for route in routes if route.beacons[0] == src.index
+            ):
                 previus_route = next(
                     route for route in routes if route.beacons[0] == src.index
                 )
@@ -752,12 +768,12 @@ def make_chain(
             ]
         )
         if enough_crystals(crystal_targets):
-            print(
-                "Dude we gonna win chill",
-                [c.index for c in crystal_targets],
-                [r.beacons for r in routes],
-                file=sys.stderr,
-            )
+            # print(
+            #     "Dude we gonna win chill",
+            #     [c.index for c in crystal_targets],
+            #     [r.beacons for r in routes],
+            #     file=sys.stderr,
+            # )
             break
 
         chain_cells = [
@@ -766,15 +782,15 @@ def make_chain(
             if chain_cell.index not in beacons and chain_cell.index != target.index
         ]
         if time.time() - t > 0.08:
-            print(f"Break no timeee", file=sys.stderr)
+            # print(f"Break no timeee", file=sys.stderr)
             break
 
-    print("Dang that", file=sys.stderr)
+    # print("Dang that", file=sys.stderr)
     if len(routes) == 0:
-        print(f"NO ROUTESSSSSSSSSSSSS", file=sys.stderr)
+        # print(f"NO ROUTESSSSSSSSSSSSS", file=sys.stderr)
         options = []
         for beacon in unused_bases if len(unused_bases) != 0 else beacons:
-            best_resource = get_best_cell(cells[beacon], chain_cells)
+            best_resource = get_best_cell(cells[beacon], no_routes_chain_cells)
             distance = cells[beacon].routes[best_resource.index][0]
             options.append(
                 (
@@ -801,7 +817,7 @@ def make_chain(
                 route for route in routes if route.max_strength > route.strength
             ]
             if not strength_routes:
-                print("There is no strength routes ", file=sys.stderr)
+                # print("There is no strength routes ", file=sys.stderr)
                 strength_routes = routes
             smallest_strength = min(
                 strength_routes, key=lambda route: route.strength
@@ -830,9 +846,10 @@ def make_chain(
         # Should never happend 🤷
         current_time = time.time()
         if total_ants < used_ants:
-            raise Exception("wtf", total_ants, used_ants, routes)
+            # raise Exception("wtf", total_ants, used_ants, routes)
+            return ([], [])
         elif len(routes) > 0:
-            print(f"Putting the leftovers {total_ants - used_ants}", file=sys.stderr)
+            # print(f"Putting the leftovers {total_ants - used_ants}", file=sys.stderr)
             leftover_routes = routes[::-1] if is_beggining_of_game(cells) else routes
             added_index = 0
             # Find the first route that is missing ants and bonus him.
@@ -849,14 +866,14 @@ def make_chain(
             )
             routes = leftover_routes
             used_ants = sum([route.route_ants for route in routes])
-            print(f"{added_index=} {total_ants=} {used_ants=}", file=sys.stderr)
+            # print(f"{added_index=} {total_ants=} {used_ants=}", file=sys.stderr)
         # print(f"Turn left: {0.1 - time.time() + t}", file=sys.stderr)
         # print(f"F Put leftovers took: {current_time - t}", file=sys.stderr)
-        print(*routes, sep="\n", file=sys.stderr)
-        print(
-            f"We tring use: {sum(route.route_ants for route in routes)} ants",
-            file=sys.stderr,
-        )
+        # print(*routes, sep="\n", file=sys.stderr)
+        # print(
+        #     f"We tring use: {sum(route.route_ants for route in routes)} ants",
+        #     file=sys.stderr,
+        # )
         current_time = time.time()
         actions.extend([make_lines(routes.copy(), cells)])
         # print(f"Turn left: {0.1 - time.time() + t}", file=sys.stderr)
@@ -920,6 +937,7 @@ if __name__ == "__main__":
         if game_turn != 1:
             t = time.time()
         crystal_cells = get_crystal_cells(cells)
+        ending = is_ending_of_game(cells)
         eggs_cells = get_eggs_cells(cells)
         set_cells_grade_neigbors(cells)
         set_cell_closest_ant_distance(cells)
@@ -944,5 +962,5 @@ if __name__ == "__main__":
         last_routes = current_routes
 
         do_actions(actions)
-        print(f"Turn took: {time.time() - t}", file=sys.stderr)
+        # print(f"Turn took: {time.time() - t}", file=sys.stderr)
         game_turn += 1

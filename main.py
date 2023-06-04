@@ -139,7 +139,6 @@ def find_route_line_direction(route: BaseRouteInfo, cells: List[Cell]) -> BaseRo
 # Result should be: 3 -> 4 -> 3 -> 3
 def make_lines(routes: List[BaseRouteInfo], cells: List[Cell]) -> str:
     actions: List[str] = []
-    print(routes, file=sys.stderr)
     for curr_route in routes.copy():
         route = replace(curr_route)
         # route = find_route_line_direction(route, cells)
@@ -474,7 +473,19 @@ def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     if dst_cell.opp_ants * grade > dst_cell.resources and dst_cell.my_ants == 0:
         grade += 10
     if dst_cell.cell_type == CellType.EGG:
-        grade -= 10 if is_beggining_of_game(cells) else 3
+        change: float = 0
+        if dst_cell.closest_base_distance / dst_cell.closest_enemy_base_distance >= 1.5:
+            change = (
+                -(dst_cell.closest_base_distance / dst_cell.closest_enemy_base_distance)
+                * 2
+            )
+        elif dst_cell.closest_base_distance / dst_cell.closest_enemy_base_distance >= 3:
+            change = -10
+        elif is_beggining_of_game(cells):
+            change += 10
+        else:
+            change += 3
+        grade -= change
     return grade
 
 
@@ -572,7 +583,7 @@ def make_chain(
         )
         if (
             route.is_primary
-            and cells[route.beacons[-1]].resources > 0
+            and cells[route.beacons[-1]].resources > cells[route.beacons[-1]].my_ants
             and ants_strength_for_target <= route.strength
             and is_route_ready(route, cells)
         ):
@@ -621,11 +632,6 @@ def make_chain(
         distance, src, target, grade = min(
             options, key=lambda option: grade_cell(option[1], option[2])
         )
-        if target.index == 31:
-            print(
-                f"{[(option[3], option[1].index) for option in options]}",
-                file=sys.stderr,
-            )
         print(f"besttt: {target.index=} {grade=} {src.index=}", file=sys.stderr)
 
         new_beacons = make_route_for_target(src_cell=src, dst_cell=target, cells=cells)
@@ -919,7 +925,9 @@ if __name__ == "__main__":
         set_cell_closest_ant_distance(cells)
         # if is_beggining_of_game(cells) and game_turn < 5 and eggs_cells:
         #     target_cells = [*eggs_cells]
-        if is_ending_of_game(cells):
+        if is_ending_of_game(cells) or number_ants(cells) > sum(
+            crystal.resources for crystal in crystal_cells
+        ):
             target_cells = [*crystal_cells]
         else:
             target_cells = [*crystal_cells, *eggs_cells]

@@ -616,7 +616,6 @@ def make_chain(
         distance, src, target, grade = min(
             options, key=lambda option: grade_cell(option[1], option[2])
         )
-        print(f"New {target.index=} with {grade=}", file=sys.stderr)
 
         new_beacons = make_route_for_target(src_cell=src, dst_cell=target, cells=cells)
         ants_strength_for_target = max(
@@ -626,8 +625,9 @@ def make_chain(
             opponent_attack_chain_streangth(target, cells) + 1,
         )
         route_max_strength = max(
-            10000, max(cells[cell_index].resources for cell_index in new_beacons)
+            -10000, max(cells[cell_index].resources for cell_index in new_beacons[1:])
         )
+
         ants_strength_for_target = min(ants_strength_for_target, route_max_strength)
         # print(f"Turn left: {0.1 - time.time() + t}", file=sys.stderr)
         # # print(f"Find target took: {current_time - t}", file=sys.stderr)
@@ -698,7 +698,7 @@ def make_chain(
 
         num_ants_available -= sum_ants_for_target + added_ants
 
-        MAX_ROUTE_SIZE = 4
+        MAX_ROUTE_SIZE = 6
         routes_to_merge = [
             route
             for route in routes
@@ -776,10 +776,11 @@ def make_chain(
         used_ants = sum(route.route_ants for route in routes)
 
         while total_ants - used_ants > 0:
-            strength_routes = routes
-            #     route for route in routes if route.max_strength > route.strength
-            # ]
+            strength_routes = [
+                route for route in routes if route.max_strength > route.strength
+            ]
             if not strength_routes:
+                print("There is no strength routes ", file=sys.stderr)
                 strength_routes = routes
             smallest_strength = min(
                 strength_routes, key=lambda route: route.strength

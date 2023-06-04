@@ -347,6 +347,12 @@ def left_points(cells: List[Cell]) -> int:
     return sum([cell.resources for cell in cells if cell.cell_type == CellType.CRYSTAL])
 
 
+def enough_crystals(crystal_cells: List[Cell]):
+    return (
+        my_score + sum([cell.resources for cell in crystal_cells])
+    ) / total_score_possible >= 0.50
+
+
 def is_beggining_of_game(cells: List[Cell]) -> bool:
     RATIO_RESOURCES = 0.30
     RATIO_TURNS = MAX_TURNS // 3
@@ -498,6 +504,7 @@ def make_chain(
     actions: List[str] = []
     beacons: Set[int] = set()
     routes: List[BaseRouteInfo] = []
+    crystal_targets: List[Cell] = []
 
     total_ants = get_my_ants_amount(cells)
     num_ants_available = total_ants
@@ -620,6 +627,11 @@ def make_chain(
                 )
             )
         beacons.update(new_beacons)
+
+        if target.cell_type == CellType.CRYSTAL:
+            crystal_targets.append(target)
+            if enough_crystals(crystal_targets):
+                break
 
         chain_cells = [
             chain_cell
@@ -749,6 +761,7 @@ if __name__ == "__main__":
     cells = update_cells_closest_base_distance(cells, my_bases)
     cells = update_cells_closest_enemy_base_distance(cells, enemy_bases)
     last_routes: List[BaseRouteInfo] = []
+    total_score_possible = total_points(cells)
 
     # game loop
     while True:

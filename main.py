@@ -446,12 +446,27 @@ def grade_beacon(dst_cell: Cell) -> float:
     return grade
 
 
+def grade_target_distance_from_bases_and_source(source: Cell, target: Cell) -> float:
+    bases_diff = target.closest_base_distance / target.closest_enemy_base_distance
+    distance: float = source.routes[target.index][0]
+    CLOSE_BASE_WEIGHT = 0.5
+    if target.cell_type == CellType.CRYSTAL:
+        if bases_diff <= 1.4:
+            return abs(
+                target.closest_base_distance - target.closest_enemy_base_distance
+            )
+
+    return distance + target.closest_base_distance * CLOSE_BASE_WEIGHT
+
+
 def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
-    grade: float = src_cell.routes[dst_cell.index][0]
+    # grade: float = src_cell.routes[dst_cell.index][0]
     # grade -= dst_cell.grade_neigbors
+    grade = grade_target_distance_from_bases_and_source(src_cell, dst_cell)
     grade += dst_cell.closest_ant_distance * 0.3
-    grade += dst_cell.closest_base_distance * 0.3
-    grade -= dst_cell.closest_enemy_base_distance * 0.15
+
+    # grade += dst_cell.closest_base_distance * 0.3
+    # grade -= dst_cell.closest_enemy_base_dis tance * 0.15
     if dst_cell.opp_ants * grade > dst_cell.resources and dst_cell.my_ants == 0:
         grade += 10
     if dst_cell.cell_type == CellType.EGG:
@@ -720,9 +735,8 @@ def make_chain(
             for chain_cell in chain_cells
             if chain_cell.index not in beacons and chain_cell.index != target.index
         ]
-        # if time.time() - t > 0.08:
-        #     break
-
+        if time.time() - t > 0.08:
+            break
     if len(routes) == 0:
         options = []
         for beacon in unused_bases if len(unused_bases) != 0 else beacons:

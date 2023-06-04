@@ -454,7 +454,11 @@ def grade_target_distance_from_bases_and_source(source: Cell, target: Cell) -> f
     distance: float = source.routes[target.index][0]
     CLOSE_BASE_WEIGHT = 0.5
     if target.cell_type == CellType.CRYSTAL and bases_diff <= 1.4:
-        return abs(target.closest_base_distance - target.closest_enemy_base_distance)
+        return (
+            distance * 0.2
+            + abs(target.closest_base_distance - target.closest_enemy_base_distance)
+            * 0.8
+        )
     return distance + target.closest_base_distance * CLOSE_BASE_WEIGHT
 
 
@@ -463,7 +467,7 @@ def grade_cell(src_cell: Cell, dst_cell: Cell) -> float:
     # grade -= dst_cell.grade_neigbors
     grade = grade_target_distance_from_bases_and_source(src_cell, dst_cell)
     grade += dst_cell.closest_ant_distance * 0.3
-    grade += src_cell.routes[dst_cell.closest_base][0] * 0.3
+    grade += src_cell.routes[dst_cell.closest_base][0] * 0
 
     # grade += dst_cell.closest_base_distance * 0.3
     # grade -= dst_cell.closest_enemy_base_dis tance * 0.15
@@ -604,18 +608,25 @@ def make_chain(
         for beacon in unused_bases if len(unused_bases) != 0 else beacons:
             best_resource = get_best_cell(cells[beacon], chain_cells)
             distance = cells[beacon].routes[best_resource.index][0]
+            grade = grade_cell(cells[beacon], best_resource)
             options.append(
                 (
                     distance,
                     cells[beacon],
                     best_resource,
-                    grade_cell(cells[beacon], best_resource),
+                    grade,
                 )
             )
 
         distance, src, target, grade = min(
             options, key=lambda option: grade_cell(option[1], option[2])
         )
+        if target.index == 31:
+            print(
+                f"{[(option[3], option[1].index) for option in options]}",
+                file=sys.stderr,
+            )
+        print(f"besttt: {target.index=} {grade=} {src.index=}", file=sys.stderr)
 
         new_beacons = make_route_for_target(src_cell=src, dst_cell=target, cells=cells)
         ants_strength_for_target = max(
@@ -749,8 +760,12 @@ def make_chain(
             if chain_cell.index not in beacons and chain_cell.index != target.index
         ]
         if time.time() - t > 0.08:
+            print(f"Break no timeee", file=sys.stderr)
             break
+
+    print("Dang that", file=sys.stderr)
     if len(routes) == 0:
+        print(f"NO ROUTESSSSSSSSSSSSS", file=sys.stderr)
         options = []
         for beacon in unused_bases if len(unused_bases) != 0 else beacons:
             best_resource = get_best_cell(cells[beacon], chain_cells)
@@ -798,7 +813,7 @@ def make_chain(
             )
             beacons_amount = len(route.beacons)
 
-            if beacons_amount >= total_ants - used_ants:
+            if beacons_amount > total_ants - used_ants:
                 break
             route.strength += 1
             route.route_ants += beacons_amount
@@ -811,6 +826,7 @@ def make_chain(
         if total_ants < used_ants:
             raise Exception("wtf", total_ants, used_ants, routes)
         elif len(routes) > 0:
+            print(f"Putting the leftovers {total_ants - used_ants}", file=sys.stderr)
             leftover_routes = routes[::-1] if is_beggining_of_game(cells) else routes
             added_index = 0
             # Find the first route that is missing ants and bonus him.
@@ -825,6 +841,8 @@ def make_chain(
                 leftover_routes[added_index].origin,
                 leftover_routes[added_index].is_primary,
             )
+            routes = leftover_routes
+            used_ants = sum([route.route_ants for route in routes])
             print(f"{added_index=} {total_ants=} {used_ants=}", file=sys.stderr)
         # print(f"Turn left: {0.1 - time.time() + t}", file=sys.stderr)
         # print(f"F Put leftovers took: {current_time - t}", file=sys.stderr)
@@ -899,9 +917,9 @@ if __name__ == "__main__":
         eggs_cells = get_eggs_cells(cells)
         set_cells_grade_neigbors(cells)
         set_cell_closest_ant_distance(cells)
-        if is_beggining_of_game(cells) and game_turn < 5 and eggs_cells:
-            target_cells = [*eggs_cells]
-        elif is_ending_of_game(cells):
+        # if is_beggining_of_game(cells) and game_turn < 5 and eggs_cells:
+        #     target_cells = [*eggs_cells]
+        if is_ending_of_game(cells):
             target_cells = [*crystal_cells]
         else:
             target_cells = [*crystal_cells, *eggs_cells]
